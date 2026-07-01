@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Admin — Extractor PDF</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #080808; color: #f0f0f0; min-height: 100vh; }
+        nav {
+            padding: 18px 40px; border-bottom: 1px solid #141414;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .nav-dot { width: 10px; height: 10px; background: #00BCD4; border-radius: 50%; }
+        .nav-title { font-size: 14px; font-weight: 600; letter-spacing: 0.08em; color: #fff; }
+        .nav-badge {
+            font-size: 10px; color: #FF9800; border: 1px solid #FF9800;
+            padding: 3px 10px; border-radius: 20px; letter-spacing: 0.1em;
+        }
+        .nav-links { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+        .nav-links a { font-size: 12px; color: #555; text-decoration: none; transition: color 0.2s; }
+        .nav-links a:hover { color: #fff; }
+
+        .main { max-width: 820px; margin: 0 auto; padding: 40px 20px 60px; }
+        .section-title {
+            font-size: 10px; color: #444; letter-spacing: 0.18em;
+            text-transform: uppercase; margin-bottom: 16px;
+        }
+
+        .flash-ok {
+            background: #0a1208; border: 1px solid #4CAF50; border-radius: 8px;
+            padding: 12px 16px; font-size: 13px; color: #4CAF50; margin-bottom: 24px;
+        }
+        .flash-err {
+            background: #120808; border: 1px solid #EF5350; border-radius: 8px;
+            padding: 12px 16px; font-size: 13px; color: #EF5350; margin-bottom: 24px;
+        }
+
+        /* TABLA USUARIOS */
+        .tabla-card {
+            background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 14px; overflow: hidden; margin-bottom: 32px;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            padding: 11px 18px; text-align: left; font-size: 10px;
+            color: #444; text-transform: uppercase; letter-spacing: 0.08em;
+            background: #0a0a0a; border-bottom: 1px solid #141414;
+        }
+        td { padding: 13px 18px; font-size: 13px; color: #888; border-top: 1px solid #111; }
+        td.username { color: #fff; font-weight: 500; }
+        tr:hover td { background: #0d0d0d; }
+
+        .badge {
+            font-size: 10px; padding: 3px 8px; border-radius: 20px;
+        }
+        .badge-admin { background: #1a0f00; color: #FF9800; border: 1px solid #FF9800; }
+        .badge-usuario { background: #061518; color: #00BCD4; border: 1px solid #00BCD4; }
+
+        .btn-eliminar {
+            padding: 5px 12px; background: transparent; color: #EF5350;
+            border: 1px solid #EF5350; border-radius: 6px; font-size: 11px;
+            cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s;
+        }
+        .btn-eliminar:hover { background: #EF5350; color: #fff; }
+
+        /* FORMULARIO CREAR */
+        .form-card {
+            background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 14px; padding: 24px;
+        }
+        .form-grid {
+            display: grid; grid-template-columns: 1fr 1fr 1fr auto;
+            gap: 12px; align-items: end;
+        }
+        .field label {
+            display: block; font-size: 10px; color: #555;
+            margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .field input, .field select {
+            width: 100%; padding: 10px 12px; background: #141414;
+            border: 1px solid #1e1e1e; border-radius: 8px; color: #fff;
+            font-size: 13px; font-family: 'Inter', sans-serif; outline: none;
+            transition: border-color 0.2s;
+        }
+        .field input:focus, .field select:focus { border-color: #00BCD4; }
+        .field select option { background: #141414; }
+
+        .btn-crear {
+            padding: 10px 20px; background: #00BCD4; color: #080808;
+            border: none; border-radius: 8px; font-size: 13px; font-weight: 700;
+            cursor: pointer; font-family: 'Inter', sans-serif;
+            white-space: nowrap; transition: background 0.2s;
+        }
+        .btn-crear:hover { background: #0097A7; }
+
+        footer {
+            text-align: center; padding: 28px; font-size: 11px;
+            color: #1e1e1e; border-top: 1px solid #0f0f0f; margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="nav-dot"></div>
+    <span class="nav-title">EXTRACTOR PDF → EXCEL</span>
+    <span class="nav-badge">ADMIN</span>
+    <div class="nav-links">
+        <a href="/">Extractor</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/logout">Cerrar sesión</a>
+    </div>
+</nav>
+
+<div class="main">
+
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for msg in messages %}
+                <div class="flash-ok">✓ {{ msg }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- USUARIOS ACTUALES -->
+    <p class="section-title">Usuarios del sistema</p>
+    <div class="tabla-card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th>Creado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in usuarios %}
+                <tr>
+                    <td class="username">{{ u.username }}</td>
+                    <td>
+                        <span class="badge {% if u.rol == 'admin' %}badge-admin{% else %}badge-usuario{% endif %}">
+                            {{ u.rol }}
+                        </span>
+                    </td>
+                    <td>{{ u.creado_en }}</td>
+                    <td>
+                        {% if u.username != current_user.username %}
+                        <form method="POST" action="/admin/eliminar-usuario/{{ u.id }}"
+                              onsubmit="return confirm('Eliminar a {{ u.username }}?')">
+                            <button type="submit" class="btn-eliminar">Eliminar</button>
+                        </form>
+                        {% else %}
+                        <span style="font-size:11px; color:#333;">Tu cuenta</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- CREAR USUARIO -->
+    <p class="section-title">Crear nuevo usuario</p>
+    <div class="form-card">
+        <form method="POST" action="/admin/crear-usuario">
+            <div class="form-grid">
+                <div class="field">
+                    <label>Usuario</label>
+                    <input type="text" name="username" placeholder="nombre_usuario" required>
+                </div>
+                <div class="field">
+                    <label>Contraseña</label>
+                    <input type="password" name="password" placeholder="Contraseña segura" required>
+                </div>
+                <div class="field">
+                    <label>Rol</label>
+                    <select name="rol">
+                        <option value="usuario">Usuario</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-crear">Crear →</button>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+<footer>Extractor PDF → Excel · Panel de Administración</footer>
+
+</body>
+</html>

@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extractor de PDFs a Excel — IA</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #080808;
+            color: #f0f0f0;
+            min-height: 100vh;
+        }
+
+        nav {
+            padding: 18px 40px;
+            border-bottom: 1px solid #141414;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .nav-dot { width: 10px; height: 10px; background: #00BCD4; border-radius: 50%; }
+        .nav-title { font-size: 14px; font-weight: 600; letter-spacing: 0.08em; color: #fff; }
+        .nav-badge {
+            font-size: 10px; color: #00BCD4; border: 1px solid #00BCD4;
+            padding: 3px 10px; border-radius: 20px; letter-spacing: 0.1em;
+        }
+
+        .hero { text-align: center; padding: 60px 40px 36px; }
+        .hero-eyebrow { font-size: 10px; letter-spacing: 0.25em; color: #00BCD4; text-transform: uppercase; margin-bottom: 14px; }
+        .hero h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 700; line-height: 1.1; color: #fff; margin-bottom: 12px; }
+        .hero h1 span { color: #00BCD4; }
+        .hero p { font-size: 14px; color: #555; max-width: 440px; margin: 0 auto; line-height: 1.7; }
+
+        .main { max-width: 760px; margin: 0 auto; padding: 32px 20px 60px; }
+
+        /* TABS */
+        .tabs {
+            display: flex; gap: 2px; background: #0f0f0f;
+            border: 1px solid #1a1a1a; border-radius: 12px;
+            padding: 4px; margin-bottom: 24px;
+        }
+        .tab {
+            flex: 1; padding: 10px; text-align: center;
+            font-size: 13px; font-weight: 500; color: #444;
+            cursor: pointer; border-radius: 9px; transition: all 0.2s;
+            border: none; background: transparent; font-family: 'Inter', sans-serif;
+        }
+        .tab.active { background: #141414; color: #00BCD4; border: 1px solid #1e1e1e; }
+        .tab:hover:not(.active) { color: #888; }
+
+        /* DROP ZONE */
+        .drop-zone {
+            border: 1.5px dashed #1e1e1e; border-radius: 16px;
+            padding: 52px 40px; text-align: center; cursor: pointer;
+            background: #0f0f0f; position: relative; transition: all 0.3s;
+        }
+        .drop-zone:hover, .drop-zone.dragover { border-color: #00BCD4; background: #061518; }
+        .drop-zone input[type="file"] {
+            position: absolute; inset: 0; opacity: 0;
+            cursor: pointer; width: 100%; height: 100%;
+        }
+        .drop-icon { font-size: 32px; margin-bottom: 14px; display: block; }
+        .drop-title { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+        .drop-sub { font-size: 12px; color: #444; margin-top: 4px; }
+        .drop-sub span { color: #00BCD4; }
+
+        /* COLA BATCH */
+        .queue-box {
+            display: none; background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 12px; overflow: hidden; margin-top: 14px;
+        }
+        .queue-box.visible { display: block; }
+        .queue-header {
+            padding: 12px 16px; background: #141414;
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        .queue-header span { font-size: 12px; color: #888; }
+        .queue-header strong { color: #00BCD4; }
+        .queue-list { max-height: 240px; overflow-y: auto; }
+        .queue-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 16px; border-bottom: 1px solid #111;
+        }
+        .queue-item .q-name { font-size: 13px; color: #ccc; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .queue-item .q-size { font-size: 11px; color: #444; flex-shrink: 0; }
+        .queue-item .q-status { font-size: 11px; flex-shrink: 0; min-width: 70px; text-align: right; }
+        .status-pending { color: #444; }
+        .status-processing { color: #00BCD4; }
+        .status-done { color: #4CAF50; }
+        .status-error { color: #EF5350; }
+
+        /* BOTONES */
+        .btn-primary {
+            display: none; width: 100%; margin-top: 14px; padding: 14px;
+            background: #00BCD4; color: #080808; border: none;
+            border-radius: 12px; font-size: 14px; font-weight: 700;
+            cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif;
+        }
+        .btn-primary.visible { display: block; }
+        .btn-primary:hover { background: #0097A7; transform: translateY(-1px); }
+        .btn-primary:disabled { background: #1a1a1a; color: #444; cursor: not-allowed; transform: none; }
+
+        /* PROGRESO */
+        .progress-box {
+            display: none; background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 12px; padding: 18px; margin-top: 14px;
+        }
+        .progress-box.visible { display: block; }
+        .progress-label { font-size: 13px; color: #888; margin-bottom: 10px; }
+        .progress-track { background: #1a1a1a; border-radius: 99px; height: 5px; overflow: hidden; }
+        .progress-fill { height: 100%; background: #00BCD4; border-radius: 99px; transition: width 0.4s ease; width: 0%; }
+        .progress-counter { font-size: 11px; color: #444; margin-top: 8px; text-align: right; }
+
+        /* ERROR */
+        .error-box {
+            display: none; background: #120808; border: 1px solid #c62828;
+            border-radius: 12px; padding: 14px 18px; margin-top: 14px;
+        }
+        .error-box.visible { display: block; }
+        .error-box p { font-size: 13px; color: #EF5350; }
+
+        /* ── PREVIEW CON EDICIÓN ─────────────────────────────────────────── */
+        .preview-box {
+            display: none; background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 16px; padding: 22px; margin-top: 20px;
+        }
+        .preview-box.visible { display: block; }
+
+        .edit-banner {
+            background: #061518; border: 1px solid #00BCD4;
+            border-radius: 10px; padding: 12px 16px; margin-bottom: 18px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .edit-banner span { font-size: 18px; }
+        .edit-banner p { font-size: 12px; color: #888; line-height: 1.5; }
+        .edit-banner p strong { color: #00BCD4; }
+
+        .section-title {
+            font-size: 10px; color: #444; letter-spacing: 0.18em;
+            text-transform: uppercase; margin-bottom: 12px;
+        }
+        .section-title.cyan { color: #00BCD4; }
+
+        /* GRID EDITABLE */
+        .datos-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 8px; margin-bottom: 22px;
+        }
+        .dato-item {
+            background: #141414; border-radius: 8px; padding: 10px 12px;
+            border: 1px solid #1e1e1e; transition: border-color 0.2s;
+        }
+        .dato-item:focus-within { border-color: #00BCD4; }
+        .dato-label {
+            font-size: 10px; color: #555; margin-bottom: 4px;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .dato-label .edit-hint {
+            font-size: 9px; color: #1e1e1e; background: #1a1a1a;
+            padding: 1px 5px; border-radius: 4px; opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .dato-item:hover .edit-hint { opacity: 1; }
+        .dato-valor {
+            font-size: 13px; color: #fff; font-weight: 500;
+            outline: none; min-height: 20px; border-radius: 4px;
+            padding: 2px 4px; margin: -2px -4px;
+            transition: background 0.2s;
+        }
+        .dato-valor:focus { background: #0a0a0a; color: #00BCD4; }
+        .dato-valor.total { color: #00BCD4; font-size: 18px; font-weight: 700; }
+        .dato-span2 { grid-column: span 2; }
+
+        /* TABLA ITEMS EDITABLE */
+        .tabla-items {
+            width: 100%; border-collapse: collapse; margin-bottom: 6px;
+        }
+        .tabla-items th {
+            background: #141414; padding: 9px 12px; font-size: 10px;
+            color: #555; text-transform: uppercase; letter-spacing: 0.08em;
+            text-align: left; border-bottom: 1px solid #1e1e1e;
+        }
+        .tabla-items th.th-actions { width: 36px; }
+        .tabla-items td {
+            padding: 6px 8px; border-bottom: 1px solid #111;
+            vertical-align: middle;
+        }
+        .tabla-items tr:hover td { background: #0d0d0d; }
+
+        /* Celda editable dentro de tabla */
+        .cell-edit {
+            display: block; width: 100%;
+            background: transparent; border: none; outline: none;
+            font-size: 12px; color: #aaa; font-family: 'Inter', sans-serif;
+            padding: 4px 6px; border-radius: 4px; min-width: 60px;
+            transition: background 0.15s, color 0.15s;
+        }
+        .cell-edit:focus { background: #141414; color: #00BCD4; }
+        .cell-edit.numeric { text-align: right; }
+
+        /* Botón eliminar fila */
+        .btn-del-row {
+            background: transparent; border: none; color: #333;
+            cursor: pointer; font-size: 14px; padding: 4px 6px;
+            border-radius: 4px; transition: all 0.2s; line-height: 1;
+        }
+        .btn-del-row:hover { color: #EF5350; background: #1a0808; }
+
+        /* Botón agregar fila */
+        .btn-add-row {
+            width: 100%; margin-top: 6px; padding: 8px;
+            background: transparent; color: #333; border: 1px dashed #1e1e1e;
+            border-radius: 8px; font-size: 12px; cursor: pointer;
+            transition: all 0.2s; font-family: 'Inter', sans-serif;
+            margin-bottom: 20px;
+        }
+        .btn-add-row:hover { color: #00BCD4; border-color: #00BCD4; background: #061518; }
+
+        /* INDICADOR DE CAMBIOS */
+        .changes-bar {
+            display: none; background: #0a1208; border: 1px solid #4CAF50;
+            border-radius: 10px; padding: 10px 16px; margin-bottom: 16px;
+            align-items: center; justify-content: space-between;
+        }
+        .changes-bar.visible { display: flex; }
+        .changes-bar p { font-size: 12px; color: #4CAF50; }
+        .btn-reset {
+            font-size: 11px; color: #555; background: transparent;
+            border: 1px solid #1e1e1e; border-radius: 6px;
+            padding: 4px 10px; cursor: pointer; font-family: 'Inter', sans-serif;
+            transition: all 0.2s;
+        }
+        .btn-reset:hover { color: #EF5350; border-color: #EF5350; }
+
+        /* BOTONES DE ACCIÓN FINALES */
+        .action-buttons { display: flex; gap: 10px; margin-top: 4px; }
+        .btn-excel {
+            flex: 1; padding: 13px; background: transparent;
+            color: #00BCD4; border: 1.5px solid #00BCD4;
+            border-radius: 12px; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif;
+        }
+        .btn-excel:hover { background: #00BCD4; color: #080808; }
+        .btn-excel:disabled { border-color: #1a1a1a; color: #333; cursor: not-allowed; }
+
+        /* BATCH RESULT */
+        .batch-result {
+            display: none; background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 16px; padding: 22px; margin-top: 20px;
+        }
+        .batch-result.visible { display: block; }
+        .batch-metrics {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 10px; margin-bottom: 20px;
+        }
+        .metric-card {
+            background: #141414; border-radius: 10px; padding: 14px;
+            border: 1px solid #1e1e1e; text-align: center;
+        }
+        .metric-num { font-size: 28px; font-weight: 700; color: #fff; line-height: 1; margin-bottom: 4px; }
+        .metric-num.cyan { color: #00BCD4; }
+        .metric-num.green { color: #4CAF50; }
+        .metric-num.red { color: #EF5350; }
+        .metric-label { font-size: 11px; color: #444; }
+        .total-global {
+            background: #061518; border: 1px solid #00BCD4;
+            border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .total-global .label { font-size: 12px; color: #888; }
+        .total-global .tg-label-sub { font-size: 11px; color: #444; margin-top: 2px; }
+        .total-global .amount { font-size: 24px; font-weight: 700; color: #00BCD4; }
+        .tabla-batch { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12px; }
+        .tabla-batch th {
+            background: #141414; padding: 9px 12px; color: #555;
+            text-align: left; border-bottom: 1px solid #1e1e1e;
+            font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+        }
+        .tabla-batch td { padding: 9px 12px; color: #888; border-bottom: 1px solid #111; }
+        .tabla-batch .td-amount { text-align: right; color: #ccc; font-weight: 500; }
+        .tabla-batch .td-ok { color: #4CAF50; }
+        .tabla-batch .td-err { color: #EF5350; }
+        .errores-lista { margin-top: 14px; }
+        .error-item {
+            background: #120808; border: 1px solid #1e1e1e; border-radius: 8px;
+            padding: 10px 14px; margin-bottom: 6px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .error-item .err-name { font-size: 12px; color: #ccc; flex: 1; }
+        .error-item .err-msg { font-size: 11px; color: #EF5350; }
+
+        footer {
+            text-align: center; padding: 28px; font-size: 11px;
+            color: #1e1e1e; border-top: 1px solid #0f0f0f; margin-top: 20px;
+        }
+
+        /* BOTÓN EDITAR EN TABLA BATCH */
+        .btn-editar-doc {
+            padding: 5px 12px; background: transparent; color: #00BCD4;
+            border: 1px solid #00BCD4; border-radius: 6px; font-size: 11px;
+            cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-editar-doc:hover { background: #00BCD4; color: #080808; }
+        .btn-editar-doc.editado { border-color: #FF9800; color: #FF9800; }
+        .btn-editar-doc.editado:hover { background: #FF9800; color: #080808; }
+        .td-edited { color: #FF9800; font-size: 10px; }
+
+        /* MODAL DE EDICIÓN PARA LOTE */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.88); z-index: 1000;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal-box {
+            background: #0f0f0f; border: 1px solid #1e1e1e; border-radius: 16px;
+            width: 100%; max-width: 700px; max-height: 90vh;
+            overflow-y: auto; padding: 24px; position: relative;
+        }
+        .modal-header {
+            display: flex; align-items: flex-start;
+            justify-content: space-between; margin-bottom: 20px;
+        }
+        .modal-header h3 { font-size: 14px; color: #fff; font-weight: 600; }
+        .modal-header .modal-filename { font-size: 11px; color: #555; margin-top: 3px; }
+        .modal-acciones { display: flex; gap: 8px; flex-shrink: 0; }
+        .btn-cerrar-modal {
+            background: transparent; border: 1px solid #1e1e1e; color: #555;
+            border-radius: 8px; padding: 7px 14px; cursor: pointer;
+            font-family: 'Inter', sans-serif; font-size: 13px; transition: all 0.2s;
+        }
+        .btn-cerrar-modal:hover { border-color: #EF5350; color: #EF5350; }
+        .btn-guardar-modal {
+            background: #00BCD4; border: none; color: #080808;
+            border-radius: 8px; padding: 7px 18px; cursor: pointer;
+            font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700;
+            transition: all 0.2s;
+        }
+        .btn-guardar-modal:hover { background: #0097A7; }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="nav-dot"></div>
+        <span class="nav-title">EXTRACTOR PDF → EXCEL</span>
+        <span class="nav-badge">IA · GROQ</span>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:16px;">
+            <span style="font-size:12px; color:#444;">👤 {{ current_user.username }}</span>
+            {% if current_user.es_admin() %}
+            <a href="/admin" style="font-size:12px; color:#FF9800; text-decoration:none;
+               border:1px solid #FF9800; padding:4px 12px; border-radius:20px;">Admin</a>
+            {% endif %}
+            <a href="/dashboard" style="font-size:12px; color:#555; text-decoration:none;"
+               onmouseover="this.style.color='#00BCD4'"
+               onmouseout="this.style.color='#555'">Dashboard</a>
+            <a href="/logout" style="font-size:12px; color:#555; text-decoration:none;"
+               onmouseover="this.style.color='#fff'"
+               onmouseout="this.style.color='#555'">Cerrar sesión</a>
+        </div>
+    </nav>
+
+<section class="hero">
+    <p class="hero-eyebrow">Powered by LLaMA 3.1 + pdfplumber</p>
+    <h1>PDFs a Excel<br><span>en segundos</span></h1>
+    <p>Sube facturas, recibos o estados de cuenta. Revisa, edita y descarga.</p>
+</section>
+
+<div class="main">
+
+    <div class="tabs">
+        <button class="tab active" onclick="setTab('single')">📄 Un archivo</button>
+        <button class="tab" onclick="setTab('batch')">📦 Procesamiento por lotes</button>
+    </div>
+
+    <!-- ── MODO INDIVIDUAL ───────────────────────────────────────────────── -->
+    <div id="panelSingle">
+        <div class="drop-zone" id="dropZoneSingle">
+            <input type="file" id="fileInputSingle" accept=".pdf">
+            <span class="drop-icon">📄</span>
+            <p class="drop-title">Arrastra tu PDF aquí</p>
+            <p class="drop-sub">o <span>haz clic para seleccionar</span></p>
+            <p class="drop-sub">Solo PDF · Máx. 20MB</p>
+        </div>
+
+        <div class="error-box" id="errorSingle"><p id="errorTextSingle">—</p></div>
+
+        <button class="btn-primary" id="btnSingle" onclick="extractSingle()">
+            Extraer datos con IA →
+        </button>
+
+        <div class="progress-box" id="progressSingle">
+            <p class="progress-label" id="labelSingle">Iniciando...</p>
+            <div class="progress-track">
+                <div class="progress-fill" id="fillSingle"></div>
+            </div>
+        </div>
+
+        <!-- PREVIEW EDITABLE -->
+        <div class="preview-box" id="previewSingle">
+
+            <div class="edit-banner">
+                <span>✏️</span>
+                <p><strong>Revisa y edita antes de descargar.</strong><br>
+                Haz clic en cualquier valor para corregirlo. Los cambios se reflejan en el Excel.</p>
+            </div>
+
+            <div class="changes-bar" id="changesBar">
+                <p>✓ Tienes cambios sin guardar — se incluirán al descargar</p>
+                <button class="btn-reset" onclick="resetearCambios()">Restaurar original</button>
+            </div>
+
+            <p class="section-title cyan">Datos del documento</p>
+            <div class="datos-grid" id="gridSingle"></div>
+
+            <p class="section-title" style="margin-bottom:10px;">Items / Conceptos</p>
+            <div style="overflow-x:auto;">
+                <table class="tabla-items" id="tablaItemsSingle">
+                    <thead>
+                        <tr>
+                            <th>Descripción</th>
+                            <th style="width:80px;">Cantidad</th>
+                            <th style="width:110px;">Precio Unit.</th>
+                            <th style="width:110px;">Importe</th>
+                            <th class="th-actions"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsSingle"></tbody>
+                </table>
+            </div>
+            <button class="btn-add-row" onclick="agregarFila()">+ Agregar fila</button>
+
+            <div style="display:flex; gap:10px; margin-top:4px;">
+                <button class="btn-excel" id="btnExcelSingle" onclick="descargarExcelSingle()"
+                    style="flex:1;">
+                    ⬇ Excel
+                </button>
+                <button class="btn-excel" id="btnSheetsSingle" onclick="exportarSheetsSingle()"
+                    style="flex:1; border-color:#4CAF50; color:#4CAF50;"
+                    onmouseover="this.style.background='#4CAF50';this.style.color='#080808'"
+                    onmouseout="this.style.background='transparent';this.style.color='#4CAF50'">
+                    ↗ Google Sheets
+                </button>
+            </div>  
+        </div>
+    </div>
+
+    <!-- ── MODO LOTE ──────────────────────────────────────────────────────── -->
+    <div id="panelBatch" style="display:none;">
+        <div class="drop-zone" id="dropZoneBatch">
+            <input type="file" id="fileInputBatch" accept=".pdf" multiple>
+            <span class="drop-icon">📦</span>
+            <p class="drop-title">Arrastra múltiples PDFs aquí</p>
+            <p class="drop-sub">o <span>haz clic para seleccionar varios archivos</span></p>
+            <p class="drop-sub">Hasta 500 PDFs · Ctrl+clic para selección múltiple</p>
+        </div>
+
+        <div class="queue-box" id="queueBox">
+            <div class="queue-header">
+                <span>Archivos en cola: <strong id="queueCount">0</strong></span>
+                <span id="queueSize" style="font-size:11px; color:#444;"></span>
+            </div>
+            <div class="queue-list" id="queueList"></div>
+        </div>
+
+        <div class="error-box" id="errorBatch"><p id="errorTextBatch">—</p></div>
+
+        <button class="btn-primary" id="btnBatch" onclick="extractBatch()">
+            Procesar lote con IA →
+        </button>
+
+        <div class="progress-box" id="progressBatch">
+            <p class="progress-label" id="labelBatch">Procesando...</p>
+            <div class="progress-track">
+                <div class="progress-fill" id="fillBatch"></div>
+            </div>
+            <p class="progress-counter" id="counterBatch"></p>
+        </div>
+
+        <div class="batch-result" id="batchResult">
+            <p class="section-title cyan">Resultado del lote</p>
+            <div class="batch-metrics">
+                <div class="metric-card">
+                    <p class="metric-num cyan" id="metricTotal">0</p>
+                    <p class="metric-label">Enviados</p>
+                </div>
+                <div class="metric-card">
+                    <p class="metric-num green" id="metricOk">0</p>
+                    <p class="metric-label">Procesados OK</p>
+                </div>
+                <div class="metric-card">
+                    <p class="metric-num red" id="metricErr">0</p>
+                    <p class="metric-label">Con error</p>
+                </div>
+            </div>
+            <div class="total-global">
+                <div>
+                    <p class="label">Total global del lote</p>
+                    <p class="tg-label-sub">Suma de todos los documentos</p>
+                </div>
+                <p class="amount" id="totalGlobal">$0.00</p>
+            </div>
+            <p class="section-title" style="margin-bottom:10px;">Documentos procesados</p>
+            <div style="overflow-x:auto;">
+                <table class="tabla-batch">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Archivo</th><th>Tipo</th>
+                            <th>Emisor</th><th>Fecha</th>
+                            <th style="text-align:right;">Total</th><th>Estado</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaBatch"></tbody>
+                </table>
+            </div>
+            <div id="erroresBatch" style="display:none;">
+                <p class="section-title" style="margin-bottom:10px; color:#EF5350;">Archivos con error</p>
+                <div class="errores-lista" id="listaErrores"></div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:4px;">
+                <button class="btn-excel" id="btnExcelBatch" onclick="descargarExcelBatch()"
+                    style="flex:1;">
+                    ⬇ Excel consolidado
+                </button>
+                <button class="btn-excel" id="btnSheetsBatch" onclick="exportarSheetsBatch()"
+                    style="flex:1; border-color:#4CAF50; color:#4CAF50;"
+                    onmouseover="this.style.background='#4CAF50';this.style.color='#080808'"
+                    onmouseout="this.style.background='transparent';this.style.color='#4CAF50'">
+                    ↗ Google Sheets
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── MODAL DE EDICIÓN PARA LOTE ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <h3>✏️ Editar documento</h3>
+                <p class="modal-filename" id="modalFilename"></p>
+            </div>
+            <div class="modal-acciones">
+                <button class="btn-cerrar-modal" onclick="cerrarModal()">Cancelar</button>
+                <button class="btn-guardar-modal" onclick="guardarModal()">Guardar cambios →</button>
+            </div>
+        </div>
+        <div class="edit-banner" style="margin-bottom:16px;">
+            <span>📝</span>
+            <p><strong>Edita cualquier campo.</strong> Al guardar, los cambios se aplican al Excel consolidado y el total global se recalcula.</p>
+        </div>
+        <p class="section-title cyan">Datos del documento</p>
+        <div class="datos-grid" id="gridModal"></div>
+        <p class="section-title" style="margin-bottom:10px;">Items / Conceptos</p>
+        <div style="overflow-x:auto;">
+            <table class="tabla-items">
+                <thead>
+                    <tr>
+                        <th>Descripción</th>
+                        <th style="width:80px;">Cantidad</th>
+                        <th style="width:110px;">Precio Unit.</th>
+                        <th style="width:110px;">Importe</th>
+                        <th class="th-actions"></th>
+                    </tr>
+                </thead>
+                <tbody id="itemsModal"></tbody>
+            </table>
+        </div>
+        <button class="btn-add-row" onclick="agregarFilaModal()">+ Agregar fila</button>
+    </div>
+</div>
+
+<!-- ── HISTORIAL ──────────────────────────────────────────────────────────── -->
+<div class="main" id="seccionHistorial" style="margin-top:0; padding-top:0;">
+    <div style="border-top: 1px solid #141414; padding-top: 32px; margin-bottom: 24px;
+                display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <p style="font-size:10px; color:#444; letter-spacing:0.18em;
+                      text-transform:uppercase; margin-bottom:4px;">Historial</p>
+            <p style="font-size:13px; color:#888;">Documentos procesados anteriormente</p>
+        </div>
+        <button onclick="toggleHistorial()"
+            id="btnToggleHistorial"
+            style="padding:8px 16px; background:transparent; color:#00BCD4;
+                   border:1px solid #00BCD4; border-radius:8px; font-size:12px;
+                   cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.2s;"
+            onmouseover="this.style.background='#00BCD4';this.style.color='#080808'"
+            onmouseout="this.style.background='transparent';this.style.color='#00BCD4'">
+            Ver historial ▼
+        </button>
+    </div>
+
+    <div id="panelHistorial" style="display:none;">
+        <!-- Buscador -->
+        <div style="display:flex; gap:10px; margin-bottom:18px;">
+            <input type="text" id="inputBusqueda"
+                placeholder="Buscar por nombre de archivo o emisor..."
+                oninput="buscarHistorial()"
+                style="flex:1; padding:10px 14px; background:#111; border:1px solid #1e1e1e;
+                       border-radius:10px; color:#fff; font-size:13px;
+                       font-family:'Inter',sans-serif; outline:none;"
+                onfocus="this.style.borderColor='#00BCD4'"
+                onblur="this.style.borderColor='#1e1e1e'">
+            <button onclick="cargarHistorial()"
+                style="padding:10px 16px; background:#141414; color:#888; border:1px solid #1e1e1e;
+                       border-radius:10px; font-size:12px; cursor:pointer;
+                       font-family:'Inter',sans-serif; transition:all 0.2s;"
+                onmouseover="this.style.color='#fff'"
+                onmouseout="this.style.color='#888'">↻ Actualizar</button>
+        </div>
+
+        <!-- Lista de registros -->
+        <div id="listaHistorial"></div>
+    </div>
+</div>
+
+<footer>Extractor PDF → Excel · Flask + pdfplumber + Groq + openpyxl</footer>
+
+<script>
+// ── ESTADO ─────────────────────────────────────────────────────────────────────
+let datosSingle = null;
+let datosOriginales = null;   // copia sin editar para el botón "restaurar"
+let datosBatch = null;
+let filenameSingle = null;
+let haycambios = false;
+let archivosLote = [];
+
+// ── TABS ───────────────────────────────────────────────────────────────────────
+function setTab(modo) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+        t.classList.toggle('active',
+            (i === 0 && modo === 'single') || (i === 1 && modo === 'batch'));
+    });
+    document.getElementById('panelSingle').style.display = modo === 'single' ? 'block' : 'none';
+    document.getElementById('panelBatch').style.display  = modo === 'batch'  ? 'block' : 'none';
+}
+
+// ── UTILIDADES ─────────────────────────────────────────────────────────────────
+const esperar = ms => new Promise(r => setTimeout(r, ms));
+
+function fmt(val) {
+    if (val === null || val === undefined) return '—';
+    if (typeof val === 'number')
+        return '$' + val.toLocaleString('es-MX', { minimumFractionDigits: 2 });
+    return val;
+}
+function fmtSize(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+    return (b/1048576).toFixed(1) + ' MB';
+}
+function parsearNumero(str) {
+    if (!str || str === '—') return null;
+    const n = parseFloat(String(str).replace(/[^0-9.-]/g, ''));
+    return isNaN(n) ? null : n;
+}
+
+// ── LEER DATOS EDITADOS DEL DOM ────────────────────────────────────────────────
+// Esta función recorre todas las celdas editables y reconstruye
+// el objeto de datos con los valores actuales (editados por el usuario).
+function leerDatosEditados() {
+    const d = {};
+
+    // Campos del grid principal
+    const campos = [
+        'tipo_documento','numero_documento','fecha_emision','fecha_vencimiento',
+        'emisor_nombre','emisor_rfc','receptor_nombre','moneda',
+        'metodo_pago','subtotal','impuestos','total'
+    ];
+    campos.forEach(campo => {
+        const el = document.getElementById('edit_' + campo);
+        if (!el) return;
+        const val = el.textContent.trim();
+        if (campo === 'subtotal' || campo === 'impuestos' || campo === 'total') {
+            d[campo] = parsearNumero(val);
+        } else {
+            d[campo] = val === '—' ? null : val;
+        }
+    });
+
+    // Reconstruir emisor y receptor como objetos anidados
+    d.emisor = { nombre: d.emisor_nombre, rfc: d.emisor_rfc };
+    d.receptor = { nombre: d.receptor_nombre };
+    delete d.emisor_nombre; delete d.emisor_rfc; delete d.receptor_nombre;
+
+    // Leer items de la tabla
+    const filas = document.querySelectorAll('#itemsSingle tr');
+    d.items = Array.from(filas).map(fila => ({
+        descripcion: fila.querySelector('.item-desc')?.value || '',
+        cantidad:    parsearNumero(fila.querySelector('.item-cant')?.value),
+        precio_unitario: parsearNumero(fila.querySelector('.item-precio')?.value),
+        importe:     parsearNumero(fila.querySelector('.item-importe')?.value),
+    })).filter(item => item.descripcion.trim() !== '');
+
+    return d;
+}
+
+// ── MARCAR CAMBIOS ─────────────────────────────────────────────────────────────
+function marcarCambio() {
+    hayambios = true;
+    document.getElementById('changesBar').classList.add('visible');
+}
+
+function resetearCambios() {
+    if (!datosOriginales) return;
+    datosSingle = JSON.parse(JSON.stringify(datosOriginales));
+    renderSingle(datosSingle);
+    hayambios = false;
+    document.getElementById('changesBar').classList.remove('visible');
+}
+
+// ── RENDER INDIVIDUAL EDITABLE ─────────────────────────────────────────────────
+function renderSingle(d) {
+    // Helper: crea una celda editable del grid
+    function campoEditable(id, label, valor, esTotal = false) {
+        const mostrar = (valor !== null && valor !== undefined) ? valor : '—';
+        return `
+            <div class="dato-item${esTotal ? ' dato-span2' : ''}">
+                <div class="dato-label">
+                    ${label}
+                    <span class="edit-hint">clic para editar</span>
+                </div>
+                <div class="dato-valor${esTotal ? ' total' : ''}"
+                     id="edit_${id}"
+                     contenteditable="true"
+                     oninput="marcarCambio()"
+                     spellcheck="false">${mostrar}</div>
+            </div>`;
+    }
+
+    const grid = document.getElementById('gridSingle');
+    grid.innerHTML =
+        campoEditable('tipo_documento',    'Tipo de documento',  d.tipo_documento) +
+        campoEditable('numero_documento',  'N° Documento',       d.numero_documento) +
+        campoEditable('fecha_emision',     'Fecha emisión',      d.fecha_emision) +
+        campoEditable('fecha_vencimiento', 'Fecha vencimiento',  d.fecha_vencimiento) +
+        campoEditable('emisor_nombre',     'Emisor',             d.emisor?.nombre) +
+        campoEditable('emisor_rfc',        'RFC Emisor',         d.emisor?.rfc) +
+        campoEditable('receptor_nombre',   'Receptor',           d.receptor?.nombre) +
+        campoEditable('moneda',            'Moneda',             d.moneda) +
+        campoEditable('metodo_pago',       'Método de pago',     d.metodo_pago) +
+        campoEditable('subtotal',          'Subtotal',           fmt(d.subtotal)) +
+        campoEditable('impuestos',         'Impuestos',          fmt(d.impuestos)) +
+        campoEditable('total',             '💰 TOTAL',           fmt(d.total), true);
+
+    // Tabla de items editable
+    const tbody = document.getElementById('itemsSingle');
+    const items = d.items || [];
+
+    if (items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5"
+            style="color:#444; text-align:center; padding:16px; font-size:12px;">
+            Sin items — usa "+ Agregar fila" para añadir
+        </td></tr>`;
+    } else {
+        tbody.innerHTML = items.map((item, i) =>
+            crearFilaItem(item, i)
+        ).join('');
+    }
+}
+
+function crearFilaItem(item, i) {
+    return `
+        <tr id="fila_${i}">
+            <td><input class="cell-edit item-desc"
+                value="${item.descripcion || ''}"
+                placeholder="Descripción del concepto"
+                oninput="marcarCambio()"></td>
+            <td><input class="cell-edit numeric item-cant"
+                value="${item.cantidad ?? ''}"
+                placeholder="0"
+                oninput="marcarCambio()"></td>
+            <td><input class="cell-edit numeric item-precio"
+                value="${item.precio_unitario ?? ''}"
+                placeholder="0.00"
+                oninput="marcarCambio()"></td>
+            <td><input class="cell-edit numeric item-importe"
+                value="${item.importe ?? ''}"
+                placeholder="0.00"
+                oninput="marcarCambio()"></td>
+            <td>
+                <button class="btn-del-row" onclick="eliminarFila(this)"
+                    title="Eliminar esta fila">×</button>
+            </td>
+        </tr>`;
+}
+
+function agregarFila() {
+    const tbody = document.getElementById('itemsSingle');
+    // Limpiar mensaje "sin items" si existe
+    if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+    const i = tbody.children.length;
+    tbody.insertAdjacentHTML('beforeend',
+        crearFilaItem({ descripcion:'', cantidad: null, precio_unitario: null, importe: null }, i)
+    );
+    marcarCambio();
+    // Foco en la nueva descripción
+    tbody.lastElementChild.querySelector('.item-desc').focus();
+}
+
+function eliminarFila(btn) {
+    btn.closest('tr').remove();
+    marcarCambio();
+}
+
+// ── MODO INDIVIDUAL: EXTRACCIÓN ────────────────────────────────────────────────
+const dropSingle  = document.getElementById('dropZoneSingle');
+const inputSingle = document.getElementById('fileInputSingle');
+
+inputSingle.addEventListener('change', () => prepararSingle(inputSingle.files[0]));
+dropSingle.addEventListener('dragover',  e => { e.preventDefault(); dropSingle.classList.add('dragover'); });
+dropSingle.addEventListener('dragleave', () => dropSingle.classList.remove('dragover'));
+dropSingle.addEventListener('drop', e => {
+    e.preventDefault(); dropSingle.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) { inputSingle.files = e.dataTransfer.files; prepararSingle(f); }
+});
+
+function prepararSingle(file) {
+    if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+        mostrarErr('errorSingle','errorTextSingle','Solo se aceptan PDFs.'); return;
+    }
+    ocultarErr('errorSingle');
+    document.getElementById('previewSingle').classList.remove('visible');
+    document.getElementById('changesBar').classList.remove('visible');
+    hayambios = false;
+    const btn = document.getElementById('btnSingle');
+    btn.classList.add('visible');
+    btn.textContent = `Extraer "${file.name}" con IA →`;
+}
+
+async function extractSingle() {
+    const file = inputSingle.files[0];
+    if (!file) return;
+    const btn = document.getElementById('btnSingle');
+    btn.disabled = true;
+    ocultarErr('errorSingle');
+    document.getElementById('previewSingle').classList.remove('visible');
+
+    const fill  = document.getElementById('fillSingle');
+    const label = document.getElementById('labelSingle');
+    document.getElementById('progressSingle').classList.add('visible');
+
+    fill.style.width = '20%'; label.textContent = 'Leyendo PDF...';
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const fetchP = fetch('/extract', { method: 'POST', body: formData });
+        await esperar(600);
+        fill.style.width = '65%'; label.textContent = 'IA analizando el documento...';
+        const res  = await fetchP;
+        const data = await res.json();
+
+        fill.style.width = '100%'; label.textContent = 'Completado';
+        await esperar(400);
+        document.getElementById('progressSingle').classList.remove('visible');
+
+        if (data.error) {
+            mostrarErr('errorSingle','errorTextSingle', data.error);
+            btn.disabled = false; return;
+        }
+
+        datosSingle    = data.datos;
+        datosOriginales = JSON.parse(JSON.stringify(data.datos)); // copia profunda
+        filenameSingle  = data.filename;
+        hayambios = false;
+        document.getElementById('changesBar').classList.remove('visible');
+        renderSingle(datosSingle);
+        document.getElementById('previewSingle').classList.add('visible');
+
+    } catch(e) {
+        document.getElementById('progressSingle').classList.remove('visible');
+        mostrarErr('errorSingle','errorTextSingle','Error: ' + e.message);
+    }
+    btn.disabled = false;
+}
+
+async function descargarExcelSingle() {
+    const btn = document.getElementById('btnExcelSingle');
+    btn.textContent = 'Generando...'; btn.disabled = true;
+
+    // Leemos los datos tal como están en el DOM (con ediciones del usuario)
+    const datosFinales = leerDatosEditados();
+
+    try {
+        const res = await fetch('/download/excel', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ datos: datosFinales, filename: filenameSingle })
+        });
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `extraccion_${new Date().toISOString().slice(0,10)}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    } catch(e) {
+        mostrarErr('errorSingle','errorTextSingle','Error al generar Excel.');
+    }
+    btn.textContent = '⬇ Descargar Excel con mis cambios';
+    btn.disabled = false;
+}
+
+// ── MODO LOTE ──────────────────────────────────────────────────────────────────
+const dropBatch  = document.getElementById('dropZoneBatch');
+const inputBatch = document.getElementById('fileInputBatch');
+
+inputBatch.addEventListener('change', () => prepararLote(inputBatch.files));
+dropBatch.addEventListener('dragover',  e => { e.preventDefault(); dropBatch.classList.add('dragover'); });
+dropBatch.addEventListener('dragleave', () => dropBatch.classList.remove('dragover'));
+dropBatch.addEventListener('drop', e => {
+    e.preventDefault(); dropBatch.classList.remove('dragover');
+    prepararLote(e.dataTransfer.files);
+});
+
+function prepararLote(files) {
+    archivosLote = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (archivosLote.length === 0) {
+        mostrarErr('errorBatch','errorTextBatch','No se encontraron PDFs.'); return;
+    }
+    if (archivosLote.length > 500) {
+        mostrarErr('errorBatch','errorTextBatch','Máximo 500 archivos.'); return;
+    }
+    ocultarErr('errorBatch');
+    document.getElementById('batchResult').classList.remove('visible');
+
+    const totalSize = archivosLote.reduce((s,f) => s + f.size, 0);
+    document.getElementById('queueCount').textContent = archivosLote.length;
+    document.getElementById('queueSize').textContent  = 'Total: ' + fmtSize(totalSize);
+
+    document.getElementById('queueList').innerHTML = archivosLote.map((f,i) => `
+        <div class="queue-item">
+            <span>📄</span>
+            <span class="q-name">${f.name}</span>
+            <span class="q-size">${fmtSize(f.size)}</span>
+            <span class="q-status status-pending" id="qstatus_${i}">En cola</span>
+        </div>`).join('');
+
+    document.getElementById('queueBox').classList.add('visible');
+    const btn = document.getElementById('btnBatch');
+    btn.classList.add('visible');
+    btn.textContent = `Procesar ${archivosLote.length} PDF${archivosLote.length>1?'s':''} con IA →`;
+}
+
+async function extractBatch() {
+    if (!archivosLote.length) return;
+    const btn = document.getElementById('btnBatch');
+    btn.disabled = true;
+    document.getElementById('batchResult').classList.remove('visible');
+    ocultarErr('errorBatch');
+
+    const fill  = document.getElementById('fillBatch');
+    const label = document.getElementById('labelBatch');
+    document.getElementById('progressBatch').classList.add('visible');
+
+    fill.style.width = '10%'; label.textContent = 'Enviando archivos...';
+    archivosLote.forEach((_,i) => {
+        const s = document.getElementById(`qstatus_${i}`);
+        if (s) { s.textContent = '⏳'; s.className = 'q-status status-processing'; }
+    });
+
+    const formData = new FormData();
+    archivosLote.forEach(f => formData.append('files', f));
+
+    try {
+        const fetchP = fetch('/extract/batch', { method: 'POST', body: formData });
+        await esperar(500);
+        fill.style.width = '50%'; label.textContent = 'IA extrayendo datos...';
+        const res  = await fetchP;
+        fill.style.width = '90%'; label.textContent = 'Generando resultados...';
+        await esperar(300);
+        const data = await res.json();
+        fill.style.width = '100%'; label.textContent = 'Lote completado';
+        await esperar(400);
+        document.getElementById('progressBatch').classList.remove('visible');
+
+        if (data.error) {
+            mostrarErr('errorBatch','errorTextBatch', data.error);
+            btn.disabled = false; return;
+        }
+
+        const mapa = {};
+        data.resultados.forEach(r => mapa[r.filename] = 'ok');
+        data.errores.forEach(e   => mapa[e.filename]  = 'err');
+        archivosLote.forEach((f,i) => {
+            const nombre = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+            const s = document.getElementById(`qstatus_${i}`);
+            if (!s) return;
+            const est = mapa[nombre];
+            s.textContent = est==='ok' ? '✓ OK' : est==='err' ? '✗ Error' : '—';
+            s.className   = 'q-status ' + (est==='ok'?'status-done':est==='err'?'status-error':'status-pending');
+        });
+
+        datosBatch = data;
+        renderBatch(data);
+    } catch(e) {
+        document.getElementById('progressBatch').classList.remove('visible');
+        mostrarErr('errorBatch','errorTextBatch','Error: ' + e.message);
+    }
+    btn.disabled = false;
+}
+
+function renderBatch(data) {
+    document.getElementById('metricTotal').textContent = archivosLote.length;
+    document.getElementById('metricOk').textContent    = data.total_procesados;
+    document.getElementById('metricErr').textContent   = data.total_errores;
+
+    // Guardar resultados en estado global editable
+    datosBatch = data.resultados.map(r => ({ ...r, editado: false }));
+
+    actualizarTotalGlobal();
+
+    document.getElementById('tablaBatch').innerHTML = datosBatch.map((r, i) => {
+        const d = r.datos || {};
+        return `<tr id="batchRow_${i}">
+            <td>${i+1}</td>
+            <td style="color:#ccc; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.filename}">${r.filename}</td>
+            <td>${d.tipo_documento||'—'}</td>
+            <td>${d.emisor?.nombre||'—'}</td>
+            <td>${d.fecha_emision||'—'}</td>
+            <td class="td-amount" id="batchTotal_${i}">${fmt(d.total)}</td>
+            <td id="batchEstado_${i}" class="td-ok">✓ OK</td>
+            <td><button class="btn-editar-doc" id="btnEditar_${i}" onclick="abrirModal(${i})">Editar</button></td>
+        </tr>`;
+    }).join('');
+
+    if (data.errores.length > 0) {
+        document.getElementById('erroresBatch').style.display = 'block';
+        document.getElementById('listaErrores').innerHTML = data.errores.map(e => `
+            <div class="error-item">
+                <span class="err-name">📄 ${e.filename}</span>
+                <span class="err-msg">${e.error}</span>
+            </div>`).join('');
+    } else {
+        document.getElementById('erroresBatch').style.display = 'none';
+    }
+
+    document.getElementById('batchResult').classList.add('visible');
+}
+
+function actualizarTotalGlobal() {
+    let tg = 0;
+    if (datosBatch) datosBatch.forEach(r => {
+        if (typeof r.datos?.total === 'number') tg += r.datos.total;
+    });
+    document.getElementById('totalGlobal').textContent =
+        '$' + tg.toLocaleString('es-MX', { minimumFractionDigits: 2 });
+}
+
+// ── MODAL DE EDICIÓN PARA LOTE ─────────────────────────────────────────────────
+let modalIndex = null;
+
+function campoEditableModal(id, label, valor, esTotal = false) {
+    const mostrar = (valor !== null && valor !== undefined) ? valor : '—';
+    return `
+        <div class="dato-item${esTotal ? ' dato-span2' : ''}">
+            <div class="dato-label">
+                ${label}
+                <span class="edit-hint">clic para editar</span>
+            </div>
+            <div class="dato-valor${esTotal ? ' total' : ''}"
+                 id="modal_${id}"
+                 contenteditable="true"
+                 spellcheck="false">${mostrar}</div>
+        </div>`;
+}
+
+function crearFilaModal(item) {
+    return `<tr>
+        <td><input class="cell-edit item-desc" value="${item.descripcion||''}" placeholder="Descripción"></td>
+        <td><input class="cell-edit numeric item-cant" value="${item.cantidad??''}" placeholder="0"></td>
+        <td><input class="cell-edit numeric item-precio" value="${item.precio_unitario??''}" placeholder="0.00"></td>
+        <td><input class="cell-edit numeric item-importe" value="${item.importe??''}" placeholder="0.00"></td>
+        <td><button class="btn-del-row" onclick="this.closest('tr').remove()">×</button></td>
+    </tr>`;
+}
+
+function abrirModal(index) {
+    modalIndex = index;
+    const r = datosBatch[index];
+    const d = r.datos || {};
+    document.getElementById('modalFilename').textContent = r.filename;
+
+    document.getElementById('gridModal').innerHTML =
+        campoEditableModal('tipo_documento',    'Tipo de documento',  d.tipo_documento) +
+        campoEditableModal('numero_documento',  'N° Documento',       d.numero_documento) +
+        campoEditableModal('fecha_emision',     'Fecha emisión',      d.fecha_emision) +
+        campoEditableModal('fecha_vencimiento', 'Fecha vencimiento',  d.fecha_vencimiento) +
+        campoEditableModal('emisor_nombre',     'Emisor',             d.emisor?.nombre) +
+        campoEditableModal('emisor_rfc',        'RFC Emisor',         d.emisor?.rfc) +
+        campoEditableModal('receptor_nombre',   'Receptor',           d.receptor?.nombre) +
+        campoEditableModal('moneda',            'Moneda',             d.moneda) +
+        campoEditableModal('metodo_pago',       'Método de pago',     d.metodo_pago) +
+        campoEditableModal('subtotal',          'Subtotal',           fmt(d.subtotal)) +
+        campoEditableModal('impuestos',         'Impuestos',          fmt(d.impuestos)) +
+        campoEditableModal('total',             '💰 TOTAL',           fmt(d.total), true);
+
+    const tbody = document.getElementById('itemsModal');
+    const items = d.items || [];
+    tbody.innerHTML = items.length === 0
+        ? `<tr><td colspan="5" style="color:#444;text-align:center;padding:16px;font-size:12px;">Sin items — usa "+ Agregar fila"</td></tr>`
+        : items.map(item => crearFilaModal(item)).join('');
+
+    document.getElementById('modalOverlay').classList.add('visible');
+    document.body.style.overflow = 'hidden';
+}
+
+function cerrarModal() {
+    document.getElementById('modalOverlay').classList.remove('visible');
+    document.body.style.overflow = '';
+    modalIndex = null;
+}
+
+function guardarModal() {
+    if (modalIndex === null) return;
+
+    const g = id => document.getElementById(`modal_${id}`)?.textContent.trim();
+    const datosEditados = {
+        tipo_documento:    g('tipo_documento'),
+        numero_documento:  g('numero_documento'),
+        fecha_emision:     g('fecha_emision'),
+        fecha_vencimiento: g('fecha_vencimiento'),
+        moneda:            g('moneda'),
+        metodo_pago:       g('metodo_pago'),
+        subtotal:  parsearNumero(g('subtotal')),
+        impuestos: parsearNumero(g('impuestos')),
+        total:     parsearNumero(g('total')),
+        emisor:   { nombre: g('emisor_nombre'), rfc: g('emisor_rfc') },
+        receptor: { nombre: g('receptor_nombre') },
+    };
+
+    const filas = document.querySelectorAll('#itemsModal tr');
+    datosEditados.items = Array.from(filas).map(f => ({
+        descripcion:     f.querySelector('.item-desc')?.value || '',
+        cantidad:        parsearNumero(f.querySelector('.item-cant')?.value),
+        precio_unitario: parsearNumero(f.querySelector('.item-precio')?.value),
+        importe:         parsearNumero(f.querySelector('.item-importe')?.value),
+    })).filter(i => i.descripcion.trim() !== '');
+
+    // Guardar en estado global
+    datosBatch[modalIndex].datos = datosEditados;
+    datosBatch[modalIndex].editado = true;
+
+    // Actualizar fila en la tabla
+    const totalCell  = document.getElementById(`batchTotal_${modalIndex}`);
+    const estadoCell = document.getElementById(`batchEstado_${modalIndex}`);
+    const btnEditar  = document.getElementById(`btnEditar_${modalIndex}`);
+    if (totalCell)  totalCell.textContent = fmt(datosEditados.total);
+    if (estadoCell) estadoCell.innerHTML  = '<span class="td-edited">✏️ Editado</span>';
+    if (btnEditar)  { btnEditar.textContent = 'Re-editar'; btnEditar.classList.add('editado'); }
+
+    actualizarTotalGlobal();
+    cerrarModal();
+}
+
+function agregarFilaModal() {
+    const tbody = document.getElementById('itemsModal');
+    if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+    tbody.insertAdjacentHTML('beforeend',
+        crearFilaModal({ descripcion:'', cantidad: null, precio_unitario: null, importe: null })
+    );
+    tbody.lastElementChild.querySelector('.item-desc').focus();
+}
+
+// Cerrar modal con Escape o clic fuera
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModal(); });
+document.addEventListener('click', e => {
+    if (e.target === document.getElementById('modalOverlay')) cerrarModal();
+});
+
+async function descargarExcelBatch() {
+    if (!datosBatch) return;
+    const btn = document.getElementById('btnExcelBatch');
+    btn.textContent = 'Generando...'; btn.disabled = true;
+    try {
+        const res = await fetch('/download/excel/batch', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ resultados: datosBatch })
+        });
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `lote_${new Date().toISOString().slice(0,10)}.xlsx`;
+        a.click();
+    } catch(e) { alert('Error al generar Excel del lote'); }
+    btn.textContent = '⬇ Descargar Excel consolidado'; btn.disabled = false;
+}
+
+// ── HELPERS DE ERROR ───────────────────────────────────────────────────────────
+function mostrarErr(boxId, textId, msg) {
+    document.getElementById(textId).textContent = '⚠️ ' + msg;
+    document.getElementById(boxId).classList.add('visible');
+}
+function ocultarErr(boxId) {
+    document.getElementById(boxId).classList.remove('visible');
+}
+
+// ── HISTORIAL ──────────────────────────────────────────────────────────────────
+let historialVisible = false;
+let busquedaTimeout = null;
+
+function toggleHistorial() {
+    historialVisible = !historialVisible;
+    const panel = document.getElementById('panelHistorial');
+    const btn   = document.getElementById('btnToggleHistorial');
+    panel.style.display = historialVisible ? 'block' : 'none';
+    btn.textContent = historialVisible ? 'Ocultar historial ▲' : 'Ver historial ▼';
+    if (historialVisible) cargarHistorial();
+}
+
+function buscarHistorial() {
+    clearTimeout(busquedaTimeout);
+    busquedaTimeout = setTimeout(cargarHistorial, 400);
+}
+
+async function cargarHistorial() {
+    const q = document.getElementById('inputBusqueda')?.value.trim() || '';
+    const lista = document.getElementById('listaHistorial');
+    lista.innerHTML = `<p style="font-size:12px;color:#444;text-align:center;padding:20px;">Cargando...</p>`;
+
+    try {
+        const url = q ? `/historial?q=${encodeURIComponent(q)}` : '/historial';
+        const res  = await fetch(url);
+        const data = await res.json();
+
+        if (!data.length) {
+            lista.innerHTML = `<p style="font-size:12px;color:#444;text-align:center;padding:24px;">
+                ${q ? 'Sin resultados para "' + q + '"' : 'Aún no hay documentos procesados'}
+            </p>`;
+            return;
+        }
+
+        lista.innerHTML = data.map(r => `
+            <div style="background:#111; border:1px solid #1a1a1a; border-radius:12px;
+                        padding:16px 18px; margin-bottom:10px;
+                        display:flex; align-items:center; gap:16px; transition:border-color 0.2s;"
+                 onmouseover="this.style.borderColor='#00BCD4'"
+                 onmouseout="this.style.borderColor='#1a1a1a'">
+                <div style="font-size:22px; flex-shrink:0;">📄</div>
+                <div style="flex:1; min-width:0;">
+                    <p style="font-size:13px; font-weight:600; color:#fff;
+                               white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        ${r.filename}
+                    </p>
+                    <p style="font-size:11px; color:#555; margin-top:3px;">
+                        ${r.tipo || 'Documento'} · ${r.emisor || 'Emisor desconocido'}
+                        · ${r.num_items || 0} items
+                    </p>
+                </div>
+                <div style="text-align:right; flex-shrink:0;">
+                    <p style="font-size:16px; font-weight:700; color:#00BCD4;">
+                        ${r.total ? '$' + Number(r.total).toLocaleString('es-MX',{minimumFractionDigits:2}) : '—'}
+                    </p>
+                    <p style="font-size:10px; color:#444; margin-top:2px;">${r.fecha}</p>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
+                    <button onclick="cargarDesdeHistorial(${r.id})"
+                        style="padding:6px 12px; background:#00BCD4; color:#080808;
+                               border:none; border-radius:6px; font-size:11px; font-weight:600;
+                               cursor:pointer; font-family:'Inter',sans-serif; white-space:nowrap;">
+                        Cargar →
+                    </button>
+                    <button onclick="eliminarDelHistorial(${r.id}, this)"
+                        style="padding:6px 12px; background:transparent; color:#444;
+                               border:1px solid #1e1e1e; border-radius:6px; font-size:11px;
+                               cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.2s;"
+                        onmouseover="this.style.color='#EF5350';this.style.borderColor='#EF5350'"
+                        onmouseout="this.style.color='#444';this.style.borderColor='#1e1e1e'">
+                        Eliminar
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+    } catch(e) {
+        lista.innerHTML = `<p style="font-size:12px;color:#EF5350;text-align:center;padding:20px;">
+            Error al cargar historial
+        </p>`;
+    }
+}
+
+async function cargarDesdeHistorial(id) {
+    try {
+        const res  = await fetch(`/historial/${id}`);
+        const data = await res.json();
+        if (data.error) return;
+
+        // Cambiar al tab individual y mostrar los datos
+        setTab('single');
+        datosSingle = data.datos;
+        datosOriginales = JSON.parse(JSON.stringify(data.datos));
+        filenameSingle  = data.filename;
+        document.getElementById('changesBar').classList.remove('visible');
+        renderSingle(datosSingle);
+        document.getElementById('previewSingle').classList.add('visible');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    } catch(e) {
+        alert('Error al cargar el documento');
+    }
+}
+
+async function eliminarDelHistorial(id, btn) {
+    if (!confirm('¿Eliminar este registro del historial?')) return;
+    try {
+        await fetch(`/historial/${id}`, { method: 'DELETE' });
+        btn.closest('div[style]').remove();
+    } catch(e) {
+        alert('Error al eliminar');
+    }
+}
+
+// ── GOOGLE SHEETS ──────────────────────────────────────────────────────────────
+async function exportarSheetsSingle() {
+    if (!datosSingle) return;
+    const btn = document.getElementById('btnSheetsSingle');
+    btn.textContent = 'Exportando...'; btn.disabled = true;
+
+    const datosFinales = leerDatosEditados();
+
+    // URL de TU hoja de Google Sheets
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1jJQ-FKqKABcTY8a5XyLlhb5_Et-VAVsN32wOQO4AU8A/edit?gid=1574427612#gid=1574427612';
+
+    try {
+        const res = await fetch('/export/sheets', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                datos: datosFinales,
+                filename: filenameSingle,
+                sheet_url: SHEET_URL
+            })
+        });
+        const data = await res.json();
+        if (data.error) {
+            mostrarErr('errorSingle','errorTextSingle', data.error);
+        } else {
+            window.open(data.url, '_blank');
+        }
+    } catch(e) {
+        mostrarErr('errorSingle','errorTextSingle','Error al exportar a Sheets.');
+    }
+    btn.textContent = '↗ Google Sheets'; btn.disabled = false;
+}
+
+async function exportarSheetsBatch() {
+    if (!datosBatch) return;
+    const btn = document.getElementById('btnSheetsBatch');
+    btn.textContent = 'Exportando lote...'; btn.disabled = true;
+
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1jJQ-FKqKABcTY8a5XyLlhb5_Et-VAVsN32wOQO4AU8A/edit?gid=1574427612#gid=1574427612';
+
+    try {
+        const res = await fetch('/export/sheets/batch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                resultados: datosBatch,
+                sheet_url: SHEET_URL,
+                nombre_lote: `Lote ${new Date().toLocaleDateString('es-MX')}`
+            })
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            mostrarErr('errorBatch','errorTextBatch', data.error);
+        } else {
+            window.open(data.url, '_blank');
+        }
+    } catch(e) {
+        mostrarErr('errorBatch','errorTextBatch','Error al exportar a Sheets.');
+    }
+
+    btn.textContent = '↗ Google Sheets'; btn.disabled = false;
+}
+
+</script>
+
+</body>
+</html>

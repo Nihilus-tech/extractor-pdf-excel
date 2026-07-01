@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — Extractor PDF</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #080808; color: #f0f0f0; min-height: 100vh; }
+
+        nav {
+            padding: 18px 40px; border-bottom: 1px solid #141414;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .nav-dot { width: 10px; height: 10px; background: #00BCD4; border-radius: 50%; }
+        .nav-title { font-size: 14px; font-weight: 600; letter-spacing: 0.08em; color: #fff; }
+        .nav-links { margin-left: auto; display: flex; gap: 16px; }
+        .nav-links a {
+            font-size: 12px; color: #555; text-decoration: none; transition: color 0.2s;
+        }
+        .nav-links a:hover { color: #fff; }
+        .nav-links a.active { color: #00BCD4; }
+
+        .main { max-width: 900px; margin: 0 auto; padding: 40px 20px 60px; }
+
+        .page-title {
+            font-size: 10px; color: #444; letter-spacing: 0.2em;
+            text-transform: uppercase; margin-bottom: 32px;
+        }
+
+        /* MÉTRICAS GLOBALES */
+        .metricas-top {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 14px; margin-bottom: 32px;
+        }
+        .metrica-card {
+            background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 14px; padding: 20px;
+        }
+        .metrica-card .numero {
+            font-size: 34px; font-weight: 700; color: #fff;
+            line-height: 1; margin-bottom: 6px;
+        }
+        .metrica-card .numero.cyan { color: #00BCD4; }
+        .metrica-card .label { font-size: 12px; color: #555; }
+
+        /* GRÁFICAS */
+        .graficas-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 14px; margin-bottom: 32px;
+        }
+        .chart-card {
+            background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 14px; padding: 20px;
+        }
+        .chart-card h3 {
+            font-size: 10px; color: #444; letter-spacing: 0.15em;
+            text-transform: uppercase; margin-bottom: 16px;
+        }
+
+        /* TABLA PROVEEDORES */
+        .tabla-card {
+            background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 14px; overflow: hidden; margin-bottom: 14px;
+        }
+        .tabla-card h3 {
+            font-size: 10px; color: #444; letter-spacing: 0.15em;
+            text-transform: uppercase; padding: 16px 20px;
+            border-bottom: 1px solid #141414;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            padding: 10px 20px; text-align: left; font-size: 10px;
+            color: #444; text-transform: uppercase; letter-spacing: 0.08em;
+            background: #0a0a0a;
+        }
+        td {
+            padding: 12px 20px; font-size: 13px; color: #888;
+            border-top: 1px solid #111;
+        }
+        td.nombre { color: #fff; font-weight: 500; }
+        td.monto { color: #00BCD4; font-weight: 600; text-align: right; }
+        td.cantidad { text-align: center; }
+        tr:hover td { background: #0d0d0d; }
+
+        .empty-state {
+            text-align: center; padding: 60px 20px;
+            font-size: 13px; color: #444;
+        }
+
+        footer {
+            text-align: center; padding: 28px; font-size: 11px;
+            color: #1e1e1e; border-top: 1px solid #0f0f0f; margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="nav-dot"></div>
+    <span class="nav-title">EXTRACTOR PDF → EXCEL</span>
+    <div class="nav-links">
+        <a href="/">Extractor</a>
+        <a href="/dashboard" class="active">Dashboard</a>
+    </div>
+</nav>
+
+<div class="main">
+    <p class="page-title">Dashboard de métricas financieras</p>
+
+    {% if metricas.total_docs == 0 %}
+    <div class="empty-state">
+        <p style="font-size:32px; margin-bottom:16px;">📊</p>
+        <p>Aún no hay documentos procesados.</p>
+        <p style="margin-top:8px;"><a href="/" style="color:#00BCD4;">Procesa tu primer PDF →</a></p>
+    </div>
+    {% else %}
+
+    <!-- MÉTRICAS GLOBALES -->
+    <div class="metricas-top">
+        <div class="metrica-card">
+            <p class="numero cyan">{{ metricas.total_docs }}</p>
+            <p class="label">Documentos procesados</p>
+        </div>
+        <div class="metrica-card">
+            <p class="numero">{{ metricas.por_emisor | length }}</p>
+            <p class="label">Proveedores únicos</p>
+        </div>
+        <div class="metrica-card">
+            <p class="numero cyan">
+                ${{ "{:,.2f}".format(metricas.total_monto) }}
+            </p>
+            <p class="label">Monto total procesado</p>
+        </div>
+    </div>
+
+    <!-- GRÁFICAS -->
+    <div class="graficas-grid">
+        <div class="chart-card">
+            <h3>Documentos por tipo</h3>
+            <canvas id="graficaTipo"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Gasto por proveedor (Top 5)</h3>
+            <canvas id="graficaProveedor"></canvas>
+        </div>
+    </div>
+
+    <!-- TABLA PROVEEDORES -->
+    <div class="tabla-card">
+        <h3>Detalle por proveedor</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Proveedor</th>
+                    <th style="text-align:center;">Documentos</th>
+                    <th style="text-align:right;">Monto total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in metricas.por_emisor %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td class="nombre">{{ item.emisor or "Sin nombre" }}</td>
+                    <td class="cantidad">{{ item.cantidad }}</td>
+                    <td class="monto">${{ "{:,.2f}".format(item.monto) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- TABLA TIPOS -->
+    <div class="tabla-card">
+        <h3>Detalle por tipo de documento</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th style="text-align:center;">Cantidad</th>
+                    <th style="text-align:right;">Monto total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in metricas.por_tipo %}
+                <tr>
+                    <td class="nombre">{{ item.tipo or "Sin clasificar" }}</td>
+                    <td class="cantidad">{{ item.cantidad }}</td>
+                    <td class="monto">${{ "{:,.2f}".format(item.monto) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% endif %}
+</div>
+
+<footer>Extractor PDF → Excel · Dashboard de métricas</footer>
+
+<script>
+{% if metricas.total_docs > 0 %}
+
+const colores = [
+    '#00BCD4','#4CAF50','#FF9800','#E53935',
+    '#9C27B0','#2196F3','#FF5722','#607D8B'
+];
+
+// Gráfica por tipo
+const datosTipo = {{ metricas.por_tipo | tojson }};
+if (datosTipo.length > 0) {
+    new Chart(document.getElementById('graficaTipo'), {
+        type: 'doughnut',
+        data: {
+            labels: datosTipo.map(d => d.tipo || 'Sin tipo'),
+            datasets: [{
+                data: datosTipo.map(d => d.cantidad),
+                backgroundColor: colores,
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    labels: { color: '#888', font: { size: 11 } }
+                }
+            }
+        }
+    });
+}
+
+// Gráfica por proveedor (top 5)
+const datosEmisor = {{ metricas.por_emisor | tojson }};
+const top5 = datosEmisor.slice(0, 5);
+if (top5.length > 0) {
+    new Chart(document.getElementById('graficaProveedor'), {
+        type: 'bar',
+        data: {
+            labels: top5.map(d => (d.emisor || 'Sin nombre').substring(0, 20)),
+            datasets: [{
+                label: 'Monto total',
+                data: top5.map(d => d.monto),
+                backgroundColor: '#00BCD4',
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#141414' } },
+                y: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#141414' } }
+            }
+        }
+    });
+}
+
+{% endif %}
+</script>
+
+</body>
+</html>

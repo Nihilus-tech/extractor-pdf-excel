@@ -1,0 +1,8 @@
+__pycache__/
+.env
+uploads/
+data/
+*.pyc
+*.pyo
+.DS_Store
+google_credentials.json
