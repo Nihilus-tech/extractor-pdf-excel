@@ -2,7 +2,7 @@
 import sqlite3
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 DB_PATH = os.path.join("data", "historial.db")
 

@@ -96,6 +96,7 @@ def extract():
             return jsonify({"error": "La IA no pudo extraer datos estructurados.", "detalle": resultado_ia.get("error")}), 500
 
         datos = resultado_ia["datos"]
+        guardar_extraccion(filename_clean, datos)
 
         return jsonify({
             "exito": True,
@@ -107,7 +108,6 @@ def extract():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        guardar_extraccion(filename_clean,resultado_ia["datos"])
         return jsonify({"error": str(e)}), 500
 
 
