@@ -26,11 +26,27 @@ def inicializar_db():
             total       REAL,
             moneda      TEXT,
             num_items   INTEGER,
+            categoria   TEXT,
             datos_json  TEXT NOT NULL
         )
     """)
     conn.commit()
     conn.close()
+
+def migrar_columna_categoria():
+    """
+    Agrega la columna 'categoria' a una tabla historial que ya existia
+    antes de esta actualizacion. Se puede llamar de forma segura multiples
+    veces, no falla si la columna ya existe.
+    """
+    conn = get_connection()
+    try:
+        conn.execute("ALTER TABLE historial ADD COLUMN categoria TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        # La columna ya existe, no hay nada que hacer
+        pass
+    conn.close()    
 
 def guardar_extraccion(filename, datos):
     """
@@ -40,8 +56,8 @@ def guardar_extraccion(filename, datos):
     conn = get_connection()
     conn.execute("""
         INSERT INTO historial
-            (fecha, filename, tipo, emisor, receptor, total, moneda, num_items, datos_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (fecha, filename, tipo, emisor, receptor, total, moneda, num_items, categoria, datos_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         datetime.now().strftime("%d/%m/%Y %H:%M"),
         filename,
@@ -51,6 +67,7 @@ def guardar_extraccion(filename, datos):
         datos.get("total"),
         datos.get("moneda"),
         len(datos.get("items") or []),
+        datos.get("categoria_gasto"),
         json.dumps(datos, ensure_ascii=False)
     ))
     conn.commit()
@@ -67,8 +84,8 @@ def guardar_lote(archivos_validos, resultados, errores):
         datos = r.get("datos", {})
         conn.execute("""
             INSERT INTO historial
-                (fecha, filename, tipo, emisor, receptor, total, moneda, num_items, datos_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (fecha, filename, tipo, emisor, receptor, total, moneda, num_items, categoria, datos_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             datetime.now().strftime("%d/%m/%Y %H:%M"),
             r.get("filename", ""),
@@ -78,6 +95,7 @@ def guardar_lote(archivos_validos, resultados, errores):
             datos.get("total"),
             datos.get("moneda"),
             len(datos.get("items") or []),
+            datos.get("categoria_gasto"),
             json.dumps(datos, ensure_ascii=False)
         ))
     conn.commit()
@@ -116,6 +134,70 @@ def obtener_detalle(registro_id):
         return {"filename": row["filename"], "datos": json.loads(row["datos_json"])}
     return None
 
+def obtener_historial_completo():
+    """
+    Devuelve TODOS los registros del historial con sus datos completos,
+    listos para generar un Excel consolidado de todo lo procesado.
+    """
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT filename, datos_json
+        FROM historial
+        ORDER BY id ASC
+    """).fetchall()
+    conn.close()
+
+    resultados = []
+    for r in rows:
+        resultados.append({
+            "filename": r["filename"],
+            "datos": json.loads(r["datos_json"])
+        })
+    return resultados    
+
+def buscar_precios_historicos_producto(emisor, clave_producto, excluir_filename=None):
+    """
+    Busca en TODO el historial los precios unitarios anteriores
+    de un producto especifico (misma clave) del mismo proveedor.
+    Devuelve una lista de precios unitarios encontrados.
+    """
+    if not emisor or not clave_producto:
+        return []
+
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT filename, datos_json FROM historial
+        WHERE emisor = ?
+        ORDER BY id ASC
+    """, (emisor,)).fetchall()
+    conn.close()
+
+    precios = []
+    for row in rows:
+        if excluir_filename and row["filename"] == excluir_filename:
+            continue
+        datos = json.loads(row["datos_json"])
+        for item in datos.get("items") or []:
+            categoria = item.get("categoria_producto")
+            modelo = item.get("modelo_dispositivo")
+            variante = item.get("material_o_variante")
+            if not categoria:
+                continue
+            partes = [categoria]
+            if modelo:
+                partes.append(modelo)
+            if variante:
+                partes.append(variante)
+            clave_item = "|".join(partes)
+
+            if clave_item == clave_producto:
+                precio = item.get("precio_unitario")
+                if isinstance(precio, (int, float)):
+                    precios.append(precio)
+
+    return precios
+
+
 def eliminar_registro(registro_id):
     """Elimina un registro del historial."""
     conn = get_connection()
@@ -142,12 +224,19 @@ def obtener_metricas():
         WHERE emisor IS NOT NULL
         GROUP BY emisor ORDER BY monto DESC LIMIT 10
     """).fetchall()
+    por_categoria = conn.execute("""
+        SELECT categoria, COUNT(*) as cantidad, COALESCE(SUM(total), 0) as monto
+        FROM historial
+        WHERE categoria IS NOT NULL
+        GROUP BY categoria ORDER BY monto DESC
+    """).fetchall()
     conn.close()
     return {
         "total_docs": total_docs,
         "total_monto": total_monto,
         "por_tipo": [dict(r) for r in por_tipo],
-        "por_emisor": [dict(r) for r in por_emisor]
+        "por_emisor": [dict(r) for r in por_emisor],
+        "por_categoria": [dict(r) for r in por_categoria]
     }
 
 

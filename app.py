@@ -1,7 +1,10 @@
 # app.py
 from modules.db_historial import (
     inicializar_db, guardar_extraccion, guardar_lote,
-    obtener_historial, obtener_detalle, eliminar_registro
+    obtener_historial, obtener_detalle, eliminar_registro,
+    inicializar_usuarios, crear_usuario, buscar_usuario_por_username,
+    buscar_usuario_por_id, obtener_todos_usuarios, eliminar_usuario,
+    migrar_columna_categoria
 )
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, flash
 from dotenv import load_dotenv
@@ -12,6 +15,7 @@ from modules.pdf_reader import extraer_texto_pdf
 from modules.ai_extractor import extraer_datos
 from modules.excel_generator import generar_excel
 from modules.excel_generator import generar_excel, generar_excel_batch
+from modules.image_reader import extraer_texto_imagen
 from modules.sheets_exporter import (
     exportar_a_sheets, exportar_lote_a_sheets, credentials_disponibles
 )
@@ -22,8 +26,10 @@ from modules.db_historial import (
     inicializar_db, guardar_extraccion, guardar_lote,
     obtener_historial, obtener_detalle, eliminar_registro,
     inicializar_usuarios, crear_usuario, buscar_usuario_por_username,
-    buscar_usuario_por_id, obtener_todos_usuarios, eliminar_usuario
+    buscar_usuario_por_id, obtener_todos_usuarios, eliminar_usuario,
+    migrar_columna_categoria, obtener_historial_completo
 )
+
 
 
 
@@ -45,7 +51,9 @@ def load_user(user_id):
 UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True) 
 inicializar_db()
+migrar_columna_categoria()
 inicializar_usuarios()
+
 def crear_admin_inicial():
     admin = buscar_usuario_por_username("admin")
     if not admin:
@@ -55,7 +63,7 @@ def crear_admin_inicial():
 
 crear_admin_inicial()
 
-ALLOWED_EXTENSIONS = {"pdf"}
+ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -84,7 +92,11 @@ def extract():
 
     try:
         # Paso 1: extraer texto del PDF
-        resultado_pdf = extraer_texto_pdf(filepath)
+        extension = filename_clean.rsplit(".", 1)[1].lower()
+        if extension in ("jpg", "jpeg", "png"):
+            resultado_pdf = extraer_texto_imagen(filepath)
+        else:
+            resultado_pdf = extraer_texto_pdf(filepath)
 
         if not resultado_pdf["texto_completo"].strip():
             return jsonify({"error": "El PDF no contiene texto extraíble. Puede ser una imagen escaneada."}), 400
@@ -96,6 +108,36 @@ def extract():
             return jsonify({"error": "La IA no pudo extraer datos estructurados.", "detalle": resultado_ia.get("error")}), 500
 
         datos = resultado_ia["datos"]
+        # Calcular alertas de precio por producto comparando con historial
+        from modules.ai_extractor import construir_clave_producto
+        from modules.db_historial import buscar_precios_historicos_producto
+
+        emisor_nombre = datos.get("emisor", {}).get("nombre") if datos.get("emisor") else None
+        for item in datos.get("items") or []:
+            clave = construir_clave_producto(item)
+            if not clave or not emisor_nombre:
+                item["alerta_precio"] = None
+                continue
+
+            precios_previos = buscar_precios_historicos_producto(emisor_nombre, clave)
+            precio_actual = item.get("precio_unitario")
+
+            if precios_previos and isinstance(precio_actual, (int, float)):
+                promedio_previo = sum(precios_previos) / len(precios_previos)
+                if promedio_previo > 0:
+                    variacion = ((precio_actual - promedio_previo) / promedio_previo) * 100
+                    if variacion >= 15:
+                        item["alerta_precio"] = {
+                            "tipo": "subida",
+                            "variacion_pct": round(variacion, 1),
+                            "precio_anterior_promedio": round(promedio_previo, 2)
+                        }
+                    else:
+                        item["alerta_precio"] = None
+                else:
+                    item["alerta_precio"] = None
+            else:
+                item["alerta_precio"] = None
         guardar_extraccion(filename_clean, datos)
 
         return jsonify({
@@ -157,7 +199,11 @@ def extract_batch():
         file.save(filepath)
 
         try:
-            resultado_pdf = extraer_texto_pdf(filepath)
+            extension = filename_clean.rsplit(".", 1)[1].lower()
+            if extension in ("jpg", "jpeg", "png"):
+                resultado_pdf = extraer_texto_imagen(filepath)
+            else:
+                resultado_pdf = extraer_texto_pdf(filepath)
 
             if not resultado_pdf["texto_completo"].strip():
                 errores.append({
@@ -237,6 +283,25 @@ def get_detalle_historial(registro_id):
 def delete_historial(registro_id):
     eliminar_registro(registro_id)
     return jsonify({"ok": True})
+
+
+@app.route("/historial/exportar", methods=["GET"])
+@login_required
+def exportar_historial_completo():
+    resultados = obtener_historial_completo()
+    if not resultados:
+        return jsonify({"error": "No hay historial para exportar"}), 400
+    try:
+        buffer = generar_excel_batch(resultados)
+        nombre = f"historial_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return send_file(
+            buffer,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=nombre
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 

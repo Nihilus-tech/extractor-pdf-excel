@@ -381,7 +381,7 @@
     <!-- ── MODO INDIVIDUAL ───────────────────────────────────────────────── -->
     <div id="panelSingle">
         <div class="drop-zone" id="dropZoneSingle">
-            <input type="file" id="fileInputSingle" accept=".pdf">
+            <input type="file" id="fileInputSingle" accept=".pdf,.jpg,.jpeg,.png">
             <span class="drop-icon">📄</span>
             <p class="drop-title">Arrastra tu PDF aquí</p>
             <p class="drop-sub">o <span>haz clic para seleccionar</span></p>
@@ -408,6 +408,14 @@
                 <span>✏️</span>
                 <p><strong>Revisa y edita antes de descargar.</strong><br>
                 Haz clic en cualquier valor para corregirlo. Los cambios se reflejan en el Excel.</p>
+            </div>
+
+            <div id="confianzaBanner" style="display:none; background:#141414; border:1px solid #1e1e1e;
+                 border-radius:10px; padding:10px 16px; margin-bottom:16px; font-size:11px; color:#888;
+                 display:flex; gap:16px; align-items:center;">
+                <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#4CAF50;margin-right:5px;"></span>Alta confianza</span>
+                <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#FF9800;margin-right:5px;"></span>Revisar</span>
+                <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#EF5350;margin-right:5px;"></span>Verificar manualmente</span>
             </div>
 
             <div class="changes-bar" id="changesBar">
@@ -453,7 +461,7 @@
     <!-- ── MODO LOTE ──────────────────────────────────────────────────────── -->
     <div id="panelBatch" style="display:none;">
         <div class="drop-zone" id="dropZoneBatch">
-            <input type="file" id="fileInputBatch" accept=".pdf" multiple>
+            <input type="file" id="fileInputBatch" accept=".pdf,.jpg,.jpeg,.png" multiple>
             <span class="drop-icon">📦</span>
             <p class="drop-title">Arrastra múltiples PDFs aquí</p>
             <p class="drop-sub">o <span>haz clic para seleccionar varios archivos</span></p>
@@ -614,7 +622,19 @@
                        font-family:'Inter',sans-serif; transition:all 0.2s;"
                 onmouseover="this.style.color='#fff'"
                 onmouseout="this.style.color='#888'">↻ Actualizar</button>
+            <button onclick="exportarHistorialCompleto()"
+                id="btnExportarHistorial"
+                style="padding:10px 16px; background:transparent; color:#4CAF50;
+                       border:1px solid #4CAF50; border-radius:10px; font-size:12px;
+                       cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.2s;
+                       white-space:nowrap;"
+                onmouseover="this.style.background='#4CAF50';this.style.color='#080808'"
+                onmouseout="this.style.background='transparent';this.style.color='#4CAF50'">
+                ⬇ Exportar todo
+            </button>
+
         </div>
+
 
         <!-- Lista de registros -->
         <div id="listaHistorial"></div>
@@ -672,7 +692,7 @@ function leerDatosEditados() {
     const campos = [
         'tipo_documento','numero_documento','fecha_emision','fecha_vencimiento',
         'emisor_nombre','emisor_rfc','receptor_nombre','moneda',
-        'metodo_pago','subtotal','impuestos','total'
+        'metodo_pago','categoria_gasto','subtotal','impuestos','total'
     ];
     campos.forEach(campo => {
         const el = document.getElementById('edit_' + campo);
@@ -718,13 +738,19 @@ function resetearCambios() {
 
 // ── RENDER INDIVIDUAL EDITABLE ─────────────────────────────────────────────────
 function renderSingle(d) {
+    const conf = d._confianza || {}; 
     // Helper: crea una celda editable del grid
-    function campoEditable(id, label, valor, esTotal = false) {
+    function campoEditable(id, label, valor, esTotal = false, confianza = null) {
         const mostrar = (valor !== null && valor !== undefined) ? valor : '—';
+        const colores = { alta: '#4CAF50', media: '#FF9800', baja: '#EF5350' };
+        const punto = confianza
+            ? `<span title="Confianza: ${confianza}" style="display:inline-block; width:7px; height:7px;
+                 border-radius:50%; background:${colores[confianza] || '#333'}; margin-left:6px;"></span>`
+            : '';
         return `
             <div class="dato-item${esTotal ? ' dato-span2' : ''}">
                 <div class="dato-label">
-                    ${label}
+                    ${label}${punto}
                     <span class="edit-hint">clic para editar</span>
                 </div>
                 <div class="dato-valor${esTotal ? ' total' : ''}"
@@ -737,18 +763,20 @@ function renderSingle(d) {
 
     const grid = document.getElementById('gridSingle');
     grid.innerHTML =
-        campoEditable('tipo_documento',    'Tipo de documento',  d.tipo_documento) +
-        campoEditable('numero_documento',  'N° Documento',       d.numero_documento) +
-        campoEditable('fecha_emision',     'Fecha emisión',      d.fecha_emision) +
+        campoEditable('tipo_documento',    'Tipo de documento',  d.tipo_documento, false, conf.tipo_documento) +
+        campoEditable('numero_documento',  'N° Documento',       d.numero_documento, false, conf.numero_documento) +
+        campoEditable('fecha_emision',     'Fecha emisión',      d.fecha_emision, false, conf.fecha_emision) +
         campoEditable('fecha_vencimiento', 'Fecha vencimiento',  d.fecha_vencimiento) +
-        campoEditable('emisor_nombre',     'Emisor',             d.emisor?.nombre) +
-        campoEditable('emisor_rfc',        'RFC Emisor',         d.emisor?.rfc) +
-        campoEditable('receptor_nombre',   'Receptor',           d.receptor?.nombre) +
+        campoEditable('emisor_nombre',     'Emisor',             d.emisor?.nombre, false, conf.emisor_nombre) +
+        campoEditable('emisor_rfc',        'RFC Emisor',         d.emisor?.rfc, false, conf.emisor_rfc) +
+        campoEditable('receptor_nombre',   'Receptor',           d.receptor?.nombre, false, conf.receptor_nombre) +
         campoEditable('moneda',            'Moneda',             d.moneda) +
-        campoEditable('metodo_pago',       'Método de pago',     d.metodo_pago) +
-        campoEditable('subtotal',          'Subtotal',           fmt(d.subtotal)) +
-        campoEditable('impuestos',         'Impuestos',          fmt(d.impuestos)) +
-        campoEditable('total',             '💰 TOTAL',           fmt(d.total), true);
+        campoEditable('metodo_pago',       'Método de pago',     d.metodo_pago, false, conf.metodo_pago) +
+        campoEditable('categoria_gasto',   'Categoría de gasto',  d.categoria_gasto) +
+        campoEditable('subtotal',          'Subtotal',           fmt(d.subtotal), false, conf.subtotal) +
+        campoEditable('impuestos',         'Impuestos',          fmt(d.impuestos), false, conf.impuestos) +
+        campoEditable('total',             '💰 TOTAL',           fmt(d.total), true, conf.total);
+
 
     // Tabla de items editable
     const tbody = document.getElementById('itemsSingle');
@@ -764,9 +792,16 @@ function renderSingle(d) {
             crearFilaItem(item, i)
         ).join('');
     }
+    document.getElementById('confianzaBanner').style.display = 'flex';
 }
 
 function crearFilaItem(item, i) {
+    const alerta = item.alerta_precio;
+    const iconoAlerta = alerta
+        ? `<span title="Precio ${alerta.variacion_pct}% mas alto que el promedio historico ($${alerta.precio_anterior_promedio})"
+             style="color:#FF9800; margin-left:4px; cursor:help;">⚠️</span>`
+        : '';
+
     return `
         <tr id="fila_${i}">
             <td><input class="cell-edit item-desc"
@@ -824,8 +859,11 @@ dropSingle.addEventListener('drop', e => {
 });
 
 function prepararSingle(file) {
-    if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
-        mostrarErr('errorSingle','errorTextSingle','Solo se aceptan PDFs.'); return;
+    const extensionesValidas = ['.pdf', '.jpg', '.jpeg', '.png'];
+    const esValido = extensionesValidas.some(ext => file.name.toLowerCase().endsWith(ext));
+    if (!file || !esValido) {
+        mostrarErr('errorSingle','errorTextSingle','Solo PDFs o imágenes (JPG, PNG).');
+        return;
     }
     ocultarErr('errorSingle');
     document.getElementById('previewSingle').classList.remove('visible');
@@ -922,9 +960,13 @@ dropBatch.addEventListener('drop', e => {
 });
 
 function prepararLote(files) {
-    archivosLote = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
-    if (archivosLote.length === 0) {
-        mostrarErr('errorBatch','errorTextBatch','No se encontraron PDFs.'); return;
+    const extensionesValidas = ['.pdf', '.jpg', '.jpeg', '.png'];
+    archivosLote = Array.from(files).filter(f =>
+        extensionesValidas.some(ext => f.name.toLowerCase().endsWith(ext))
+    );
+    if (!archivosLote.length) {
+        mostrarErr('errorBatch','errorTextBatch','Sin PDFs o imágenes válidos.');
+        return;
     }
     if (archivosLote.length > 500) {
         mostrarErr('errorBatch','errorTextBatch','Máximo 500 archivos.'); return;
@@ -1058,12 +1100,17 @@ function actualizarTotalGlobal() {
 // ── MODAL DE EDICIÓN PARA LOTE ─────────────────────────────────────────────────
 let modalIndex = null;
 
-function campoEditableModal(id, label, valor, esTotal = false) {
+function campoEditableModal(id, label, valor, esTotal = false, confianza = null) {
     const mostrar = (valor !== null && valor !== undefined) ? valor : '—';
+    const colores = { alta: '#4CAF50', media: '#FF9800', baja: '#EF5350' };
+    const punto = confianza
+        ? `<span title="Confianza: ${confianza}" style="display:inline-block; width:7px; height:7px;
+             border-radius:50%; background:${colores[confianza] || '#333'}; margin-left:6px;"></span>`
+        : '';
     return `
         <div class="dato-item${esTotal ? ' dato-span2' : ''}">
             <div class="dato-label">
-                ${label}
+                ${label}${punto}
                 <span class="edit-hint">clic para editar</span>
             </div>
             <div class="dato-valor${esTotal ? ' total' : ''}"
@@ -1087,21 +1134,23 @@ function abrirModal(index) {
     modalIndex = index;
     const r = datosBatch[index];
     const d = r.datos || {};
+    const conf = d._confianza || {};
     document.getElementById('modalFilename').textContent = r.filename;
 
     document.getElementById('gridModal').innerHTML =
-        campoEditableModal('tipo_documento',    'Tipo de documento',  d.tipo_documento) +
-        campoEditableModal('numero_documento',  'N° Documento',       d.numero_documento) +
-        campoEditableModal('fecha_emision',     'Fecha emisión',      d.fecha_emision) +
+        campoEditableModal('tipo_documento',    'Tipo de documento',  d.tipo_documento, false, conf.tipo_documento) +
+        campoEditableModal('numero_documento',  'N° Documento',       d.numero_documento, false, conf.numero_documento) +
+        campoEditableModal('fecha_emision',     'Fecha emisión',      d.fecha_emision, false, conf.fecha_emision) +
         campoEditableModal('fecha_vencimiento', 'Fecha vencimiento',  d.fecha_vencimiento) +
-        campoEditableModal('emisor_nombre',     'Emisor',             d.emisor?.nombre) +
-        campoEditableModal('emisor_rfc',        'RFC Emisor',         d.emisor?.rfc) +
-        campoEditableModal('receptor_nombre',   'Receptor',           d.receptor?.nombre) +
+        campoEditableModal('emisor_nombre',     'Emisor',             d.emisor?.nombre, false, conf.emisor_nombre) +
+        campoEditableModal('emisor_rfc',        'RFC Emisor',         d.emisor?.rfc, false, conf.emisor_rfc) +
+        campoEditableModal('receptor_nombre',   'Receptor',           d.receptor?.nombre, false, conf.receptor_nombre) +
         campoEditableModal('moneda',            'Moneda',             d.moneda) +
-        campoEditableModal('metodo_pago',       'Método de pago',     d.metodo_pago) +
-        campoEditableModal('subtotal',          'Subtotal',           fmt(d.subtotal)) +
-        campoEditableModal('impuestos',         'Impuestos',          fmt(d.impuestos)) +
-        campoEditableModal('total',             '💰 TOTAL',           fmt(d.total), true);
+        campoEditableModal('metodo_pago',       'Método de pago',     d.metodo_pago, false, conf.metodo_pago) +
+        campoEditableModal('categoria_gasto',   'Categoría de gasto',  d.categoria_gasto) +
+        campoEditableModal('subtotal',          'Subtotal',           fmt(d.subtotal), false, conf.subtotal) +
+        campoEditableModal('impuestos',         'Impuestos',          fmt(d.impuestos), false, conf.impuestos) +
+        campoEditableModal('total',             '💰 TOTAL',           fmt(d.total), true, conf.total);
 
     const tbody = document.getElementById('itemsModal');
     const items = d.items || [];
@@ -1316,6 +1365,32 @@ async function eliminarDelHistorial(id, btn) {
     } catch(e) {
         alert('Error al eliminar');
     }
+}
+
+
+async function exportarHistorialCompleto() {
+    const btn = document.getElementById('btnExportarHistorial');
+    btn.textContent = 'Generando...'; btn.disabled = true;
+
+    try {
+        const res = await fetch('/historial/exportar');
+        if (!res.ok) {
+            const data = await res.json();
+            alert(data.error || 'Error al exportar el historial.');
+            btn.textContent = '⬇ Exportar todo'; btn.disabled = false;
+            return;
+        }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `historial_completo_${new Date().toISOString().slice(0,10)}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    } catch (e) {
+        alert('Error al exportar el historial.');
+    }
+
+    btn.textContent = '⬇ Exportar todo'; btn.disabled = false;
 }
 
 // ── GOOGLE SHEETS ──────────────────────────────────────────────────────────────

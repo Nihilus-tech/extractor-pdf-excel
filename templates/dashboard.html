@@ -48,7 +48,7 @@
 
         /* GRÁFICAS */
         .graficas-grid {
-            display: grid; grid-template-columns: 1fr 1fr;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 14px; margin-bottom: 32px;
         }
         .chart-card {
@@ -145,6 +145,10 @@
         <div class="chart-card">
             <h3>Gasto por proveedor (Top 5)</h3>
             <canvas id="graficaProveedor"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Gasto por categoría</h3>
+            <canvas id="graficaCategoria"></canvas>
         </div>
     </div>
 
@@ -256,6 +260,32 @@ if (top5.length > 0) {
             scales: {
                 x: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#141414' } },
                 y: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#141414' } }
+            }
+        }
+    });
+}
+
+// Gráfica por categoría
+const datosCategoria = {{ metricas.por_categoria | tojson }};
+if (datosCategoria.length > 0) {
+    new Chart(document.getElementById('graficaCategoria'), {
+        type: 'bar',
+        data: {
+            labels: datosCategoria.map(d => d.categoria || 'Sin categoria'),
+            datasets: [{
+                label: 'Monto total',
+                data: datosCategoria.map(d => d.monto),
+                backgroundColor: '#4CAF50',
+                borderRadius: 6
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#141414' } },
+                y: { ticks: { color: '#555', font: { size: 9 } }, grid: { color: '#141414' } }
             }
         }
     });

@@ -11,6 +11,24 @@ COLOR_FILA_PAR = "EFF6FF"    # Azul muy claro
 BLANCO = "FFFFFF"
 GRIS = "6B7280"
 
+def valor_simple(val):
+    """Convierte cualquier valor a algo que Excel pueda escribir en una celda."""
+    if val is None:
+        return 0
+    if isinstance(val, (int, float)):
+        return val
+    if isinstance(val, dict):
+        for v in val.values():
+            if isinstance(v, (int, float)):
+                return v
+        return 0
+    if isinstance(val, str):
+        try:
+            return float(val.replace(',', '').replace('$', ''))
+        except Exception:
+            return val
+    return val
+
 def _borde_delgado():
     lado = Side(style="thin", color="D1D5DB")
     return Border(left=lado, right=lado, top=lado, bottom=lado)
@@ -191,7 +209,7 @@ def generar_excel_batch(resultados: list) -> BytesIO:
         fila = i + 2
         color_fondo = BLANCO if i % 2 == 0 else COLOR_FILA_PAR
 
-        total_doc = d.get("total")
+        total_doc = valor_simple(d.get("total"))
         if isinstance(total_doc, (int, float)):
             total_global += total_doc
 
@@ -257,9 +275,9 @@ def generar_excel_batch(resultados: list) -> BytesIO:
             ("Emisor", d.get("emisor", {}).get("nombre") if d.get("emisor") else None),
             ("RFC Emisor", d.get("emisor", {}).get("rfc") if d.get("emisor") else None),
             ("Receptor", d.get("receptor", {}).get("nombre") if d.get("receptor") else None),
-            ("Subtotal", d.get("subtotal")),
-            ("Impuestos", d.get("impuestos")),
-            ("Total", d.get("total")),
+            ("Subtotal", valor_simple(d.get("subtotal"))),
+            ("Impuestos", valor_simple(d.get("impuestos"))),
+            ("Total", valor_simple(d.get("total"))),
             ("Moneda", d.get("moneda")),
             ("Método Pago", d.get("metodo_pago")),
         ]
