@@ -159,7 +159,6 @@ def buscar_precios_historicos_producto(emisor, clave_producto, excluir_filename=
     """
     Busca en TODO el historial los precios unitarios anteriores
     de un producto especifico (misma clave) del mismo proveedor.
-    Devuelve una lista de precios unitarios encontrados.
     """
     if not emisor or not clave_producto:
         return []
@@ -180,14 +179,15 @@ def buscar_precios_historicos_producto(emisor, clave_producto, excluir_filename=
         for item in datos.get("items") or []:
             categoria = item.get("categoria_producto")
             modelo = item.get("modelo_dispositivo")
-            variante = item.get("material_o_variante")
+            variante = item.get("variante_especifica")
+            material = item.get("material_o_marca")
             if not categoria:
                 continue
             partes = [categoria]
-            if modelo:
-                partes.append(modelo)
             if variante:
                 partes.append(variante)
+            if material:
+                partes.append(material)
             clave_item = "|".join(partes)
 
             if clave_item == clave_producto:

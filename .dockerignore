@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+.git/
+.gitignore
+uploads/*
+data/*
+google_credentials.json
+venv/
+*.md
+screenshots/
+factura_prueba_*.pdf
+generar_facturas_prueba.py

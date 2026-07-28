@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
+import os
+import platform
 import pytesseract
 from PIL import Image
 
-# Ruta exacta donde se instaló Tesseract en Windows
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe" 
+# En Windows local, Tesseract esta en una ruta especifica.
+# En el contenedor Docker (Linux/Cloud Run), esta en el PATH del sistema
+# porque lo instalamos con apt-get, asi que no hace falta especificar ruta.
+if platform.system() == "Windows":
+    ruta_windows = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    if os.path.exists(ruta_windows):
+        pytesseract.pytesseract.tesseract_cmd = ruta_windows
+
 
 def extraer_texto_imagen(filepath):
     """
@@ -12,8 +20,6 @@ def extraer_texto_imagen(filepath):
     compatibilidad con el resto del sistema.
     """
     imagen = Image.open(filepath)
-
-    # lang='spa' usa el paquete de idioma español que instalaste
     texto = pytesseract.image_to_string(imagen, lang='spa')
 
     return {

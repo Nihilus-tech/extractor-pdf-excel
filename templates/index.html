@@ -807,7 +807,7 @@ function crearFilaItem(item, i) {
             <td><input class="cell-edit item-desc"
                 value="${item.descripcion || ''}"
                 placeholder="Descripción del concepto"
-                oninput="marcarCambio()"></td>
+                oninput="marcarCambio()">${iconoAlerta}</td>
             <td><input class="cell-edit numeric item-cant"
                 value="${item.cantidad ?? ''}"
                 placeholder="0"

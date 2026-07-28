@@ -187,7 +187,20 @@ INSTRUCCIONES CRÍTICAS:
    - "Comida y representacion"
    - "Otro"
    Usa "Otro" solo si genuinamente no encaja en ninguna categoria anterior.
-   7. Para cada item, extrae ademas "categoria_producto", "modelo_dispositivo" y "material_o_variante" analizando la descripcion original. Estos campos sirven para identificar si dos productos de facturas distintas son exactamente el mismo, incluso si la redaccion de la descripcion varia. Se especifico y consistente: usa siempre las mismas palabras clave en minusculas y con guion bajo para el mismo tipo de producto (ej: siempre "iphone_15", nunca a veces "iphone15" y otras veces "iphone_quince"). Si el documento no es de productos fisicos (ej: un recibo de servicio), usa null en estos tres campos.
+   7. Para cada item, extrae ademas "categoria_producto", "variante_especifica" y "material_o_marca" analizando la descripcion original. Para "categoria_producto", elige EXACTAMENTE una de estas opciones (no inventes otras):
+   - "materia_prima_o_insumo" (algo usado para fabricar o transformar, ej: tela, harina, madera, componentes)
+   - "mercancia_para_reventa" (producto terminado que se compra para revender igual, ej: ropa, electronicos, productos de tienda)
+   - "equipo_o_herramienta" (activos que se usan repetidamente, no se consumen, ej: maquinaria, herramientas, mobiliario)
+   - "consumible_operativo" (se gasta rapido en la operacion diaria, ej: papeleria, articulos de limpieza, empaque, envases)
+   - "refaccion_o_repuesto" (piezas para reparar o dar mantenimiento a equipo existente)
+   - "servicio" (algo que no es un objeto fisico, ej: mano de obra, consultoria, transporte de carga)
+   - "otro"
+
+   "variante_especifica" es lo que distingue versiones del mismo producto base y que puede afectar el precio: talla, modelo, presentacion, capacidad, calibre, color si el color implica un proceso distinto de fabricacion. Usa null si no aplica.
+
+   "material_o_marca" es el material de fabricacion o la marca/proveedor especifico si eso afecta el costo (ej: "acero_inoxidable", "aluminio", "marca_x"). Usa null si no aplica.
+
+   Estos tres campos sirven para identificar si el mismo producto aparece en facturas distintas del mismo proveedor, incluso si la redaccion de la descripcion varia entre una factura y otra. Se especifico y consistente: usa siempre las mismas palabras clave en minusculas y con guion bajo para el mismo concepto (ej: siempre "talla_m", nunca a veces "talla_mediana" y otras veces "m"). Si el documento no es de productos fisicos con precio unitario comparable (ej: un recibo de servicio general, un estado de cuenta), usa null en estos tres campos.
 """
 
     estructura_base = """{
@@ -203,9 +216,9 @@ INSTRUCCIONES CRÍTICAS:
     "cantidad": null,
     "precio_unitario": null,
     "importe": null,
-    "categoria_producto": "categoria general del producto, ej: funda, cargador, audifonos, cable, protector_pantalla, bateria_externa, otro",
-    "modelo_dispositivo": "modelo especifico si aplica, ej: iphone_15, samsung_s24, universal, o null si no aplica",
-    "material_o_variante": "material o variante que afecta el precio, ej: silicon, cuero, transparente, metal, o null"
+    "categoria_producto": "categoria general segun la lista de categorias",
+    "variante_especifica": "talla, modelo, presentacion, capacidad, etc, o null",
+    "material_o_marca": "material o marca especifica si afecta el precio, o null"
   }],
   "subtotal": null,
   "impuestos": null,
@@ -330,12 +343,24 @@ def extraer_datos(texto_pdf):
     tipo_detectado = detectar_tipo(texto_pdf)
     prompt = construir_prompt(texto_pdf, tipo_detectado)
 
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=2000,
-        temperature=0.1
-    )
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=2000,
+            temperature=0.1
+        )
+    except Exception as e:
+        mensaje_error = str(e)
+        if "429" in mensaje_error or "rate_limit" in mensaje_error.lower():
+            return {
+                "exito": False,
+                "error": "El sistema está muy solicitado en este momento. Espera unos 30 segundos e intenta de nuevo."
+            }
+        return {
+            "exito": False,
+            "error": "Ocurrió un error al conectar con el servicio de IA. Intenta de nuevo en un momento."
+        }
 
     respuesta_texto = response.choices[0].message.content.strip()
     respuesta_texto = (respuesta_texto
@@ -378,20 +403,20 @@ def construir_clave_producto(item):
     """
     Construye una clave de comparacion a partir de los atributos
     estructurados de un item. Dos items son "el mismo producto"
-    solo si tienen la misma categoria, modelo y material/variante.
-    El color se ignora a proposito porque normalmente no afecta el precio.
+    solo si tienen la misma categoria, variante y material/marca.
+    Funciona para cualquier tipo de negocio, no solo electronica.
     """
     categoria = item.get("categoria_producto")
-    modelo = item.get("modelo_dispositivo")
-    variante = item.get("material_o_variante")
+    variante = item.get("variante_especifica")
+    material = item.get("material_o_marca")
 
     if not categoria:
         return None
 
     partes = [categoria]
-    if modelo:
-        partes.append(modelo)
     if variante:
         partes.append(variante)
+    if material:
+        partes.append(material)
 
-    return "|".join(partes)        
+    return "|".join(partes)
