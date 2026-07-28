@@ -1,11 +1,4 @@
 # app.py
-from modules.db_historial import (
-    inicializar_db, guardar_extraccion, guardar_lote,
-    obtener_historial, obtener_detalle, eliminar_registro,
-    inicializar_usuarios, crear_usuario, buscar_usuario_por_username,
-    buscar_usuario_por_id, obtener_todos_usuarios, eliminar_usuario,
-    migrar_columna_categoria
-)
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, flash
 from dotenv import load_dotenv
 import os
@@ -27,7 +20,8 @@ from modules.db_historial import (
     obtener_historial, obtener_detalle, eliminar_registro,
     inicializar_usuarios, crear_usuario, buscar_usuario_por_username,
     buscar_usuario_por_id, obtener_todos_usuarios, eliminar_usuario,
-    migrar_columna_categoria, obtener_historial_completo
+    migrar_columna_categoria, obtener_historial_completo,
+    actualizar_sheet_url, migrar_columna_sheet_url
 )
 
 
@@ -52,6 +46,7 @@ UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True) 
 inicializar_db()
 migrar_columna_categoria()
+migrar_columna_sheet_url()
 inicializar_usuarios()
 
 def crear_admin_inicial():
@@ -406,6 +401,16 @@ def crear_usuario_route():
         flash(f"El usuario '{username}' ya existe.")
     return redirect(url_for("admin"))
 
+    
+    return redirect(url_for("index"))
+    
+@app.route("/perfil/sheet-url", methods=["POST"])
+@login_required
+def actualizar_sheet_url_route():
+    nueva_url = request.form.get("sheet_url", "").strip()
+    actualizar_sheet_url(current_user.id, nueva_url)
+    flash("URL de Google Sheets actualizada correctamente.")
+    return redirect(url_for("index"))
 
 @app.route("/admin/eliminar-usuario/<int:user_id>", methods=["POST"])
 @login_required

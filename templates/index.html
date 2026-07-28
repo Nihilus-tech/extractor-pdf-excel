@@ -363,6 +363,24 @@
                onmouseover="this.style.color='#fff'"
                onmouseout="this.style.color='#555'">Cerrar sesión</a>
         </div>
+      
+        <div style="background:#0f0f0f; border:1px solid #1a1a1a; border-radius:12px;
+             padding:14px 18px; margin-bottom:20px; display:flex; align-items:center; gap:12px;">
+             <span style="font-size:12px; color:#888; white-space:nowrap;">📊 Mi Google Sheets:</span>
+             <form method="POST" action="/perfil/sheet-url" style="flex:1; display:flex; gap:8px;">
+                 <input type="text" name="sheet_url"
+                        value="{{ current_user.sheet_url or '' }}"
+                        placeholder="Pega la URL de tu hoja de Google Sheets"
+                        style="flex:1; padding:8px 12px; background:#141414; border:1px solid #1e1e1e;
+                               border-radius:8px; color:#fff; font-size:12px; font-family:'Inter',sans-serif;">
+                 <button type="submit"
+                         style="padding:8px 16px; background:#4CAF50; color:#080808; border:none;
+                                border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;
+                                font-family:'Inter',sans-serif;">
+                     Guardar
+                 </button>
+             </form>
+         </div>  
     </nav>
 
 <section class="hero">
@@ -1396,13 +1414,17 @@ async function exportarHistorialCompleto() {
 // ── GOOGLE SHEETS ──────────────────────────────────────────────────────────────
 async function exportarSheetsSingle() {
     if (!datosSingle) return;
+    if (!SHEET_URL) {
+        mostrarErr('errorSingle','errorTextSingle','Configura tu URL de Google Sheets arriba antes de exportar.');
+        return;
+    }
     const btn = document.getElementById('btnSheetsSingle');
     btn.textContent = 'Exportando...'; btn.disabled = true;
 
     const datosFinales = leerDatosEditados();
 
     // URL de TU hoja de Google Sheets
-    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1jJQ-FKqKABcTY8a5XyLlhb5_Et-VAVsN32wOQO4AU8A/edit?gid=1574427612#gid=1574427612';
+    const SHEET_URL = "{{ current_user.sheet_url or '' }}";
 
     try {
         const res = await fetch('/export/sheets', {
@@ -1428,10 +1450,14 @@ async function exportarSheetsSingle() {
 
 async function exportarSheetsBatch() {
     if (!datosBatch) return;
+    if (!SHEET_URL) {
+        mostrarErr('errorBatch','errorTextBatch','Configura tu URL de Google Sheets arriba antes de exportar.');
+        return;
+    }
     const btn = document.getElementById('btnSheetsBatch');
     btn.textContent = 'Exportando lote...'; btn.disabled = true;
 
-    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1jJQ-FKqKABcTY8a5XyLlhb5_Et-VAVsN32wOQO4AU8A/edit?gid=1574427612#gid=1574427612';
+    const SHEET_URL = "{{ current_user.sheet_url or '' }}";
 
     try {
         const res = await fetch('/export/sheets/batch', {

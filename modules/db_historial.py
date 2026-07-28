@@ -48,6 +48,19 @@ def migrar_columna_categoria():
         pass
     conn.close()    
 
+def migrar_columna_sheet_url():
+    """
+    Agrega la columna 'sheet_url' a la tabla usuarios existente,
+    para que cada usuario pueda tener su propia hoja de Google Sheets.
+    """
+    conn = get_connection()
+    try:
+        conn.execute("ALTER TABLE usuarios ADD COLUMN sheet_url TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+    conn.close()    
+
 def guardar_extraccion(filename, datos):
     """
     Guarda una extracción individual en el historial.
@@ -268,6 +281,7 @@ class Usuario(UserMixin):
         self.username = username
         self.password_hash = password_hash
         self.rol = rol
+        self.sheet_url = sheet_url
 
     def es_admin(self):
         return self.rol == "admin"
@@ -313,7 +327,7 @@ def buscar_usuario_por_username(username):
     ).fetchone()
     conn.close()
     if row:
-        return Usuario(row["id"], row["username"], row["password_hash"], row["rol"])
+        return Usuario(row["id"], row["username"], row["password_hash"], row["rol"], row["sheet_url"])
     return None
 
 
@@ -325,7 +339,7 @@ def buscar_usuario_por_id(user_id):
     ).fetchone()
     conn.close()
     if row:
-        return Usuario(row["id"], row["username"], row["password_hash"], row["rol"])
+        return Usuario(row["id"], row["username"], row["password_hash"], row["rol"], row["sheet_url"])
     return None
 
 
@@ -346,4 +360,10 @@ def eliminar_usuario(user_id):
     conn.commit()
     conn.close()
 
+def actualizar_sheet_url(user_id, sheet_url):
+    """Guarda o actualiza la URL de Google Sheets de un usuario."""
+    conn = get_connection()
+    conn.execute("UPDATE usuarios SET sheet_url = ? WHERE id = ?", (sheet_url, user_id))
+    conn.commit()
+    conn.close()
     
