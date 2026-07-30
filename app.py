@@ -15,7 +15,7 @@ from modules.sheets_exporter import (
 
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_bcrypt import Bcrypt
-from modules.db_historial import (
+from modules.firestore_db import (
     inicializar_db, guardar_extraccion, guardar_lote,
     obtener_historial, obtener_detalle, eliminar_registro,
     inicializar_usuarios, crear_usuario, buscar_usuario_por_username,
@@ -40,13 +40,10 @@ login_manager.login_message = "Inicia sesion para acceder."
 
 @login_manager.user_loader
 def load_user(user_id):
-    return buscar_usuario_por_id(int(user_id))
+    return buscar_usuario_por_id(user_id)
 
 UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True) 
-inicializar_db()
-migrar_columna_categoria()
-migrar_columna_sheet_url()
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 inicializar_usuarios()
 
 def crear_admin_inicial():
@@ -105,7 +102,7 @@ def extract():
         datos = resultado_ia["datos"]
         # Calcular alertas de precio por producto comparando con historial
         from modules.ai_extractor import construir_clave_producto
-        from modules.db_historial import buscar_precios_historicos_producto
+        from modules.firestore_db import buscar_precios_historicos_producto
 
         emisor_nombre = datos.get("emisor", {}).get("nombre") if datos.get("emisor") else None
         for item in datos.get("items") or []:
@@ -225,7 +222,7 @@ def extract_batch():
         except Exception as e:
             errores.append({"filename": filename_clean, "error": str(e)})
 
-    guardar_lote(archivos_validos, resultados, errores)
+    guardar_lote(resultados)
 
     return jsonify({
         "exito": True,
@@ -264,7 +261,7 @@ def get_historial():
     return jsonify(registros)
 
 
-@app.route("/historial/<int:registro_id>", methods=["GET"])
+@app.route("/historial/<registro_id>", methods=["GET"])
 @login_required
 def get_detalle_historial(registro_id):
     detalle = obtener_detalle(registro_id)
@@ -273,7 +270,7 @@ def get_detalle_historial(registro_id):
     return jsonify(detalle)
 
 
-@app.route("/historial/<int:registro_id>", methods=["DELETE"])
+@app.route("/historial/<registro_id>", methods=["DELETE"])
 @login_required
 def delete_historial(registro_id):
     eliminar_registro(registro_id)
@@ -341,7 +338,7 @@ def export_sheets_batch():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    from modules.db_historial import obtener_metricas
+    from modules.firestore_db import obtener_metricas
     metricas = obtener_metricas()
     return render_template("dashboard.html", metricas=metricas)
 
@@ -412,7 +409,7 @@ def actualizar_sheet_url_route():
     flash("URL de Google Sheets actualizada correctamente.")
     return redirect(url_for("index"))
 
-@app.route("/admin/eliminar-usuario/<int:user_id>", methods=["POST"])
+@app.route("/admin/eliminar-usuario/<user_id>", methods=["POST"])
 @login_required
 def eliminar_usuario_route(user_id):
     if not current_user.es_admin():
@@ -423,7 +420,6 @@ def eliminar_usuario_route(user_id):
     eliminar_usuario(user_id)
     flash("Usuario eliminado.")
     return redirect(url_for("admin"))
-
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

@@ -1329,13 +1329,13 @@ async function cargarHistorial() {
                     <p style="font-size:10px; color:#444; margin-top:2px;">${r.fecha}</p>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
-                    <button onclick="cargarDesdeHistorial(${r.id})"
+                    <button onclick="cargarDesdeHistorial('${r.id}')"
                         style="padding:6px 12px; background:#00BCD4; color:#080808;
                                border:none; border-radius:6px; font-size:11px; font-weight:600;
                                cursor:pointer; font-family:'Inter',sans-serif; white-space:nowrap;">
                         Cargar →
                     </button>
-                    <button onclick="eliminarDelHistorial(${r.id}, this)"
+                    <button onclick="eliminarDelHistorial('${r.id}', this)"
                         style="padding:6px 12px; background:transparent; color:#444;
                                border:1px solid #1e1e1e; border-radius:6px; font-size:11px;
                                cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.2s;"
