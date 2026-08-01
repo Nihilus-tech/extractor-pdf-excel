@@ -450,6 +450,7 @@
                     <thead>
                         <tr>
                             <th>Descripción</th>
+                            <th style="width:100px;">SKU</th>
                             <th style="width:80px;">Cantidad</th>
                             <th style="width:110px;">Precio Unit.</th>
                             <th style="width:110px;">Importe</th>
@@ -590,6 +591,7 @@
                 <thead>
                     <tr>
                         <th>Descripción</th>
+                        <th style="width:100px;">SKU</th>
                         <th style="width:80px;">Cantidad</th>
                         <th style="width:110px;">Precio Unit.</th>
                         <th style="width:110px;">Importe</th>
@@ -703,6 +705,9 @@ function parsearNumero(str) {
 // ── LEER DATOS EDITADOS DEL DOM ────────────────────────────────────────────────
 // Esta función recorre todas las celdas editables y reconstruye
 // el objeto de datos con los valores actuales (editados por el usuario).
+// Reads the current state of the editable preview form (header fields
+// plus item rows) and rebuilds the full extraction data object, so
+// downloads reflect any manual corrections the user made.
 function leerDatosEditados() {
     const d = {};
 
@@ -728,10 +733,11 @@ function leerDatosEditados() {
     d.receptor = { nombre: d.receptor_nombre };
     delete d.emisor_nombre; delete d.emisor_rfc; delete d.receptor_nombre;
 
-    // Leer items de la tabla
+    // SKU is optional per item; store as null (not empty string) when absent
     const filas = document.querySelectorAll('#itemsSingle tr');
     d.items = Array.from(filas).map(fila => ({
         descripcion: fila.querySelector('.item-desc')?.value || '',
+        sku:         fila.querySelector('.item-sku')?.value || null,
         cantidad:    parsearNumero(fila.querySelector('.item-cant')?.value),
         precio_unitario: parsearNumero(fila.querySelector('.item-precio')?.value),
         importe:     parsearNumero(fila.querySelector('.item-importe')?.value),
@@ -813,6 +819,9 @@ function renderSingle(d) {
     document.getElementById('confianzaBanner').style.display = 'flex';
 }
 
+// Renders one editable item row for the single-document preview table.
+// item.sku is optional and may be null/undefined when the AI did not
+// find a product code in the source document.
 function crearFilaItem(item, i) {
     const alerta = item.alerta_precio;
     const iconoAlerta = alerta
@@ -826,6 +835,10 @@ function crearFilaItem(item, i) {
                 value="${item.descripcion || ''}"
                 placeholder="Descripción del concepto"
                 oninput="marcarCambio()">${iconoAlerta}</td>
+            <td><input class="cell-edit item-sku"
+                value="${item.sku || ''}"
+                placeholder="—"
+                oninput="marcarCambio()"></td>
             <td><input class="cell-edit numeric item-cant"
                 value="${item.cantidad ?? ''}"
                 placeholder="0"
@@ -844,6 +857,7 @@ function crearFilaItem(item, i) {
             </td>
         </tr>`;
 }
+
 
 function agregarFila() {
     const tbody = document.getElementById('itemsSingle');
@@ -1138,9 +1152,13 @@ function campoEditableModal(id, label, valor, esTotal = false, confianza = null)
         </div>`;
 }
 
+// Renders one editable item row inside the batch-mode edit modal.
+// Mirrors crearFilaItem() but without the price-alert icon, since the
+// modal is used for correcting data rather than reviewing alerts.
 function crearFilaModal(item) {
     return `<tr>
         <td><input class="cell-edit item-desc" value="${item.descripcion||''}" placeholder="Descripción"></td>
+        <td><input class="cell-edit item-sku" value="${item.sku||''}" placeholder="—"></td>
         <td><input class="cell-edit numeric item-cant" value="${item.cantidad??''}" placeholder="0"></td>
         <td><input class="cell-edit numeric item-precio" value="${item.precio_unitario??''}" placeholder="0.00"></td>
         <td><input class="cell-edit numeric item-importe" value="${item.importe??''}" placeholder="0.00"></td>
@@ -1186,6 +1204,9 @@ function cerrarModal() {
     modalIndex = null;
 }
 
+// Reads the modal's current form state, replaces the corresponding
+// document's data in the global datosBatch array, marks it as edited
+// in the summary table, and recalculates the batch's global total.
 function guardarModal() {
     if (modalIndex === null) return;
 
@@ -1204,9 +1225,11 @@ function guardarModal() {
         receptor: { nombre: g('receptor_nombre') },
     };
 
+    // SKU is optional per item; store as null (not empty string) when absent
     const filas = document.querySelectorAll('#itemsModal tr');
     datosEditados.items = Array.from(filas).map(f => ({
         descripcion:     f.querySelector('.item-desc')?.value || '',
+        sku:             f.querySelector('.item-sku')?.value || null,
         cantidad:        parsearNumero(f.querySelector('.item-cant')?.value),
         precio_unitario: parsearNumero(f.querySelector('.item-precio')?.value),
         importe:         parsearNumero(f.querySelector('.item-importe')?.value),

@@ -174,10 +174,19 @@ def generar_excel(datos):
 
 
 
-def generar_excel_batch(resultados: list) -> BytesIO:
+def generar_excel_batch(resultados: list[dict]) -> BytesIO:
     """
-    Recibe una lista de resultados del batch y genera un Excel
-    con una hoja resumen + una hoja por documento.
+    Generates a consolidated Excel workbook for a batch of processed
+    documents: one summary sheet with full header-level columns per
+    document, plus one detail sheet per individual document.
+
+    Args:
+        resultados: list of dicts, each with "filename" and "datos"
+            keys, where "datos" is the structured extraction result.
+
+    Returns:
+        BytesIO buffer containing the generated .xlsx file, ready to
+        be sent via Flask's send_file().
     """
     wb = openpyxl.Workbook()
 
@@ -185,12 +194,13 @@ def generar_excel_batch(resultados: list) -> BytesIO:
     ws_resumen = wb.active
     ws_resumen.title = "Resumen General"
 
-    # Anchos
-    for col, ancho in zip("ABCDEFGH", [5, 35, 20, 20, 15, 15, 15, 20]):
-        ws_resumen.column_dimensions[get_column_letter(ord(col) - 64)].width = ancho
+    # Column widths sized for the 13 header-level fields now shown
+    anchos_resumen = [5, 35, 15, 20, 14, 25, 16, 20, 14, 14, 14, 10, 20]
+    for i, ancho in enumerate(anchos_resumen, start=1):
+        ws_resumen.column_dimensions[get_column_letter(i)].width = ancho
 
     # Título
-    ws_resumen.merge_cells("A1:H1")
+    ws_resumen.merge_cells("A1:M1")
     t = ws_resumen["A1"]
     t.value = f"RESUMEN DEL LOTE — {len(resultados)} DOCUMENTOS PROCESADOS"
     t.font = Font(bold=True, color=BLANCO, size=12)
@@ -198,8 +208,12 @@ def generar_excel_batch(resultados: list) -> BytesIO:
     t.alignment = Alignment(horizontal="center", vertical="center")
     ws_resumen.row_dimensions[1].height = 28
 
-    # Encabezados de tabla resumen
-    encabezados_resumen = ["#", "Archivo", "Tipo", "N° Documento", "Emisor", "Fecha", "Total", "Moneda"]
+    # Encabezados de tabla resumen — columnas completas de cabecera de factura
+    encabezados_resumen = [
+        "#", "Archivo", "Tipo", "N° Documento", "Fecha Emisión",
+        "Emisor", "RFC Emisor", "Receptor", "Subtotal", "Impuestos",
+        "Total", "Moneda", "Método Pago"
+    ]
     for col, enc in enumerate(encabezados_resumen, start=1):
         _celda_header(ws_resumen, 2, col, enc, COLOR_SUBHEADER)
 
@@ -214,15 +228,25 @@ def generar_excel_batch(resultados: list) -> BytesIO:
         if isinstance(total_doc, (int, float)):
             total_global += total_doc
 
+        # emisor/receptor can be missing or malformed in the AI response,
+        # so default to an empty dict before reading nested fields
+        emisor_dict = d.get("emisor") or {}
+        receptor_dict = d.get("receptor") or {}
+
         valores = [
             i,
             resultado.get("filename", ""),
             d.get("tipo_documento", ""),
             d.get("numero_documento", ""),
-            d.get("emisor", {}).get("nombre", "") if d.get("emisor") else "",
             d.get("fecha_emision", ""),
+            emisor_dict.get("nombre", ""),
+            emisor_dict.get("rfc", ""),
+            receptor_dict.get("nombre", ""),
+            valor_simple(d.get("subtotal")),
+            valor_simple(d.get("impuestos")),
             total_doc,
             d.get("moneda", ""),
+            d.get("metodo_pago", ""),
         ]
 
         for col, val in enumerate(valores, start=1):
@@ -230,20 +254,21 @@ def generar_excel_batch(resultados: list) -> BytesIO:
             celda.fill = PatternFill("solid", fgColor=color_fondo)
             celda.border = _borde_delgado()
             celda.font = Font(size=9)
-            if col == 7 and isinstance(val, (int, float)):
+            # Currency formatting applies to Subtotal, Impuestos, Total (cols 9-11)
+            if col in (9, 10, 11) and isinstance(val, (int, float)):
                 celda.number_format = '"$"#,##0.00'
                 celda.alignment = Alignment(horizontal="right")
 
     # Fila de total global
     fila_total = len(resultados) + 3
-    ws_resumen.merge_cells(f"A{fila_total}:F{fila_total}")
+    ws_resumen.merge_cells(f"A{fila_total}:J{fila_total}")
     c_label = ws_resumen[f"A{fila_total}"]
     c_label.value = "TOTAL GLOBAL DEL LOTE"
     c_label.font = Font(bold=True, color=BLANCO, size=10)
     c_label.fill = PatternFill("solid", fgColor=COLOR_HEADER)
     c_label.alignment = Alignment(horizontal="right", vertical="center", indent=1)
 
-    c_total = ws_resumen.cell(row=fila_total, column=7, value=total_global)
+    c_total = ws_resumen.cell(row=fila_total, column=11, value=total_global)
     c_total.font = Font(bold=True, color=BLANCO, size=11)
     c_total.fill = PatternFill("solid", fgColor=COLOR_HEADER)
     c_total.number_format = '"$"#,##0.00'
