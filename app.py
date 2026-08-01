@@ -273,7 +273,7 @@ def get_detalle_historial(registro_id):
 @app.route("/historial/<registro_id>", methods=["DELETE"])
 @login_required
 def delete_historial(registro_id):
-    eliminar_registro(registro_id)
+    eliminar_registro(registro_id) 
     return jsonify({"ok": True})
 
 

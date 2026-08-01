@@ -118,8 +118,8 @@ def generar_excel(datos):
     # ── HOJA 2: ITEMS / CONCEPTOS ─────────────────────────────────────────────
     ws2 = wb.create_sheet(title="Items")
 
-    encabezados = ["#", "Descripción", "Cantidad", "Precio Unitario", "Importe"]
-    anchos = [5, 45, 12, 18, 15]
+    encabezados = ["#", "Descripción", "SKU", "Cantidad", "Precio Unitario", "Importe"]
+    anchos = [5, 40, 15, 12, 18, 15]
 
     for col, (enc, ancho) in enumerate(zip(encabezados, anchos), start=1):
         ws2.column_dimensions[get_column_letter(col)].width = ancho
@@ -138,6 +138,7 @@ def generar_excel(datos):
             celdas_valores = [
                 i,
                 item.get("descripcion", ""),
+                item.get("sku") or "—",
                 item.get("cantidad"),
                 item.get("precio_unitario"),
                 item.get("importe"),
@@ -150,16 +151,16 @@ def generar_excel(datos):
                 celda.font = Font(size=9)
 
                 # Formato monetario para columnas numéricas
-                if col in (4, 5) and isinstance(valor, (int, float)):
+                if col in (5, 6) and isinstance(valor, (int, float)):
                     celda.number_format = '"$"#,##0.00'
                     celda.alignment = Alignment(horizontal="right")
-                elif col == 3:
+                elif col == 4:
                     celda.alignment = Alignment(horizontal="center")
 
         # Fila de total al final
         fila_total = len(items) + 2
-        ws2.cell(row=fila_total, column=4, value="TOTAL:").font = Font(bold=True, size=10)
-        celda_total = ws2.cell(row=fila_total, column=5, value=datos.get("total"))
+        ws2.cell(row=fila_total, column=5, value="TOTAL:").font = Font(bold=True, size=10)
+        celda_total = ws2.cell(row=fila_total, column=6, value=datos.get("total"))
         celda_total.font = Font(bold=True, size=10, color="1E3A5F")
         celda_total.number_format = '"$"#,##0.00'
         celda_total.fill = PatternFill("solid", fgColor=COLOR_FILA_PAR)

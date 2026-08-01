@@ -174,6 +174,7 @@ INSTRUCCIONES CRÍTICAS:
 3. Si un campo no existe, usa null.
 4. Extrae TODOS los items o movimientos que encuentres.
 5. En "confianza_ia", evalúa honestamente qué tan clara estaba la información en el texto para el total, el RFC del emisor y la fecha de emisión. Si el texto es confuso o el dato no aparece explícitamente, marca "baja".
+5.5. Para el campo "impuestos" a nivel documento, suma cualquier monto de IVA, ISR retenido, IEPS u otro impuesto que aparezca en el documento, incluso si el PDF no usa literalmente la palabra "impuesto" o "impuestos". Es muy comun que los CFDIs mexicanos solo digan "IVA 16%" o "IVA trasladado" sin mencionar la palabra "impuesto". Identifica cualquier concepto que represente una contribucion fiscal (IVA, ISR, IEPS, retenciones) y sumalo en el campo "impuestos", sin importar el nombre exacto que use el documento.
 6. Para "categoria_gasto", elige EXACTAMENTE una de estas opciones según lo que se compró o pagó, basándote en la descripción de los items o el giro del emisor:
    - "Insumos y materiales"
    - "Servicios (luz, agua, internet, telefono)"
@@ -187,7 +188,7 @@ INSTRUCCIONES CRÍTICAS:
    - "Comida y representacion"
    - "Otro"
    Usa "Otro" solo si genuinamente no encaja en ninguna categoria anterior.
-   7. Para cada item, extrae ademas "categoria_producto", "variante_especifica" y "material_o_marca" analizando la descripcion original. Para "categoria_producto", elige EXACTAMENTE una de estas opciones (no inventes otras):
+7. Para cada item, extrae ademas "categoria_producto", "variante_especifica" y "material_o_marca" analizando la descripcion original. Para "categoria_producto", elige EXACTAMENTE una de estas opciones (no inventes otras):
    - "materia_prima_o_insumo" (algo usado para fabricar o transformar, ej: tela, harina, madera, componentes)
    - "mercancia_para_reventa" (producto terminado que se compra para revender igual, ej: ropa, electronicos, productos de tienda)
    - "equipo_o_herramienta" (activos que se usan repetidamente, no se consumen, ej: maquinaria, herramientas, mobiliario)
@@ -216,6 +217,7 @@ INSTRUCCIONES CRÍTICAS:
     "cantidad": null,
     "precio_unitario": null,
     "importe": null,
+    "sku": "codigo de producto, SKU o codigo de barras si aparece en el documento, o null si no viene",
     "categoria_producto": "categoria general segun la lista de categorias",
     "variante_especifica": "talla, modelo, presentacion, capacidad, etc, o null",
     "material_o_marca": "material o marca especifica si afecta el precio, o null"
