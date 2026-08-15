@@ -7,10 +7,11 @@ from datetime import datetime
 from modules.pdf_reader import extraer_texto_pdf
 from modules.ai_extractor import extraer_datos
 from modules.excel_generator import generar_excel
-from modules.excel_generator import generar_excel, generar_excel_batch
+from modules.excel_generator import generar_excel, generar_excel_batch, generar_excel_batch_detallado
 from modules.image_reader import extraer_texto_imagen
 from modules.sheets_exporter import (
-    exportar_a_sheets, exportar_lote_a_sheets, credentials_disponibles
+    exportar_a_sheets, exportar_lote_a_sheets,
+    exportar_lote_a_sheets_detallado, credentials_disponibles
 )
 
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -21,7 +22,8 @@ from modules.firestore_db import (
     inicializar_usuarios, crear_usuario, buscar_usuario_por_username,
     buscar_usuario_por_id, obtener_todos_usuarios, eliminar_usuario,
     migrar_columna_categoria, obtener_historial_completo,
-    actualizar_sheet_url, migrar_columna_sheet_url
+    actualizar_sheet_url, migrar_columna_sheet_url,
+    obtener_historial_por_rango
 )
 
 
@@ -252,6 +254,29 @@ def download_excel_batch():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/export/sheets/batch/detallado", methods=["POST"])
+@login_required
+def export_sheets_batch_detallado():
+    """
+    Exports the batch to Google Sheets in product-level detail mode:
+    one row per item, repeating the parent invoice's header fields
+    on every row.
+    """
+    data = request.get_json()
+    if not data or "resultados" not in data:
+        return jsonify({"error": "No se recibieron datos"}), 400
+    if not credentials_disponibles():
+        return jsonify({"error": "Google Sheets no configurado"}), 503
+    try:
+        resultado = exportar_lote_a_sheets_detallado(
+            resultados=data["resultados"],
+            sheet_url=data.get("sheet_url")
+        )
+        return jsonify(resultado)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/historial", methods=["GET"])
 @login_required
@@ -296,6 +321,39 @@ def exportar_historial_completo():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/historial/exportar-rango", methods=["GET"])
+@login_required
+def exportar_historial_por_rango():
+    """
+    Exports historial from the last N days as a product-level detail
+    Excel workbook. Accepts ?dias=7|15|30|60 as a query parameter.
+    """
+    try:
+        dias = int(request.args.get("dias", 7))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Parametro 'dias' invalido"}), 400
+
+    if dias not in (7, 15, 30, 60):
+        return jsonify({"error": "Rango no soportado. Usa 7, 15, 30 o 60 dias"}), 400
+
+    resultados = obtener_historial_por_rango(dias)
+    if not resultados:
+        return jsonify({"error": f"No hay historial en los ultimos {dias} dias"}), 400
+
+    try:
+        buffer = generar_excel_batch_detallado(resultados)
+        nombre = f"reporte_{dias}dias_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return send_file(
+            buffer,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=nombre
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/export/sheets", methods=["POST"])
 @login_required
@@ -313,7 +371,9 @@ def export_sheets():
         )
         return jsonify(resultado)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"{type(e).__name__}: {str(e)}"}), 500
 
 
 @app.route("/export/sheets/batch", methods=["POST"])

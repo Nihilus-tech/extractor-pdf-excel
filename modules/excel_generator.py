@@ -325,3 +325,140 @@ def generar_excel_batch(resultados: list[dict]) -> BytesIO:
     wb.save(buffer)
     buffer.seek(0)
     return buffer    
+
+
+def generar_excel_batch_detallado(resultados: list[dict]) -> BytesIO:
+    """
+    Generates a product-level consolidated Excel workbook for a batch
+    of processed documents: one row per product line item, repeating
+    the parent invoice's header data on every row. This is the
+    "ready to filter and send to your accountant" view, since every
+    product across every invoice in the batch lives in a single flat
+    table.
+
+    Unlike generar_excel_batch(), which produces one row per invoice,
+    this function expands each invoice's items into their own rows.
+    An invoice with 3 items produces 3 rows, each carrying that
+    invoice's shared header fields (provider, date, totals, etc.).
+
+    Args:
+        resultados: list of dicts, each with "filename" and "datos"
+            keys, where "datos" is the structured extraction result.
+
+    Returns:
+        BytesIO buffer containing the generated .xlsx file, ready to
+        be sent via Flask's send_file().
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Detalle por Producto"
+
+    encabezados = [
+        "#", "Archivo", "Tipo", "N° Documento", "Fecha Emisión",
+        "Emisor", "RFC Emisor", "Receptor", "Método Pago",
+        "Descripción", "SKU", "Cantidad", "Precio Unitario", "Importe",
+        "Subtotal Factura", "Impuestos Factura", "Total Factura", "Moneda"
+    ]
+    anchos = [5, 30, 12, 18, 14, 22, 16, 18, 18, 35, 14, 10, 14, 14, 14, 14, 14, 10]
+    for i, ancho in enumerate(anchos, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = ancho
+
+    # Título
+    ws.merge_cells(f"A1:{get_column_letter(len(encabezados))}1")
+    t = ws["A1"]
+    t.value = f"DETALLE POR PRODUCTO — {len(resultados)} DOCUMENTOS PROCESADOS"
+    t.font = Font(bold=True, color=BLANCO, size=12)
+    t.fill = PatternFill("solid", fgColor=COLOR_HEADER)
+    t.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 28
+
+    for col, enc in enumerate(encabezados, start=1):
+        _celda_header(ws, 2, col, enc, COLOR_SUBHEADER)
+
+    fila_actual = 3
+    contador_linea = 1
+    total_global = 0.0
+
+    for resultado in resultados:
+        d = resultado.get("datos", {})
+        filename = resultado.get("filename", "")
+
+        # emisor/receptor can be missing or malformed in the AI response,
+        # so default to an empty dict before reading nested fields
+        emisor_dict = d.get("emisor") or {}
+        receptor_dict = d.get("receptor") or {}
+        items = d.get("items") or []
+
+        subtotal_doc = valor_simple(d.get("subtotal"))
+        impuestos_doc = valor_simple(d.get("impuestos"))
+        total_doc = valor_simple(d.get("total"))
+        if isinstance(total_doc, (int, float)):
+            total_global += total_doc
+
+        # Header fields shared by this invoice, computed once and
+        # repeated on every product row below
+        cabecera = [
+            filename,
+            d.get("tipo_documento", ""),
+            d.get("numero_documento", ""),
+            d.get("fecha_emision", ""),
+            emisor_dict.get("nombre", ""),
+            emisor_dict.get("rfc", ""),
+            receptor_dict.get("nombre", ""),
+            d.get("metodo_pago", ""),
+        ]
+
+        # If the AI found no items, still emit one row so the invoice
+        # is not silently dropped from the consolidated view
+        filas_producto = items if items else [{}]
+
+        for item in filas_producto:
+            color_fondo = BLANCO if contador_linea % 2 == 0 else COLOR_FILA_PAR
+
+            valores = [
+                contador_linea,
+                *cabecera,
+                item.get("descripcion", ""),
+                item.get("sku") or "—",
+                item.get("cantidad"),
+                item.get("precio_unitario"),
+                item.get("importe"),
+                subtotal_doc,
+                impuestos_doc,
+                total_doc,
+                d.get("moneda", ""),
+            ]
+
+            for col, val in enumerate(valores, start=1):
+                celda = ws.cell(row=fila_actual, column=col, value=val)
+                celda.fill = PatternFill("solid", fgColor=color_fondo)
+                celda.border = _borde_delgado()
+                celda.font = Font(size=9)
+                # Currency formatting: Precio Unitario, Importe, Subtotal
+                # Factura, Impuestos Factura, Total Factura (cols 13-17)
+                if col in (13, 14, 15, 16, 17) and isinstance(val, (int, float)):
+                    celda.number_format = '"$"#,##0.00'
+                    celda.alignment = Alignment(horizontal="right")
+
+            fila_actual += 1
+            contador_linea += 1
+
+    # Fila de total global
+    ws.merge_cells(f"A{fila_actual}:P{fila_actual}")
+    c_label = ws[f"A{fila_actual}"]
+    c_label.value = "TOTAL GLOBAL DEL LOTE"
+    c_label.font = Font(bold=True, color=BLANCO, size=10)
+    c_label.fill = PatternFill("solid", fgColor=COLOR_HEADER)
+    c_label.alignment = Alignment(horizontal="right", vertical="center", indent=1)
+
+    c_total = ws.cell(row=fila_actual, column=17, value=total_global)
+    c_total.font = Font(bold=True, color=BLANCO, size=11)
+    c_total.fill = PatternFill("solid", fgColor=COLOR_HEADER)
+    c_total.number_format = '"$"#,##0.00'
+    c_total.alignment = Alignment(horizontal="right")
+    c_total.border = _borde_delgado()
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer    

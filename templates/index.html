@@ -457,23 +457,23 @@
                             <th class="th-actions"></th>
                         </tr>
                     </thead>
-                    <tbody id="itemsSingle"></tbody>
+                    <tbody id="itemsSingle"></tbody> 
                 </table>
             </div>
             <button class="btn-add-row" onclick="agregarFila()">+ Agregar fila</button>
-
+   
             <div style="display:flex; gap:10px; margin-top:4px;">
-                <button class="btn-excel" id="btnExcelSingle" onclick="descargarExcelSingle()"
+                <button class="btn-excel" id="btnExcelBatch" onclick="descargarExcelBatch()"
                     style="flex:1;">
-                    ⬇ Excel
+                    ⬇ Excel consolidado
                 </button>
-                <button class="btn-excel" id="btnSheetsSingle" onclick="exportarSheetsSingle()"
+                <button class="btn-excel" id="btnSheetsBatch" onclick="exportarSheetsBatch()"
                     style="flex:1; border-color:#4CAF50; color:#4CAF50;"
                     onmouseover="this.style.background='#4CAF50';this.style.color='#080808'"
                     onmouseout="this.style.background='transparent';this.style.color='#4CAF50'">
                     ↗ Google Sheets
                 </button>
-            </div>  
+            </div>
         </div>
     </div>
 
@@ -549,6 +549,17 @@
                 <p class="section-title" style="margin-bottom:10px; color:#EF5350;">Archivos con error</p>
                 <div class="errores-lista" id="listaErrores"></div>
             </div>
+            <div style="background:#0f0f0f; border:1px solid #1a1a1a; border-radius:10px;
+                 padding:12px 16px; margin-bottom:12px; display:flex; align-items:center; gap:12px;">
+                <span style="font-size:12px; color:#888; white-space:nowrap;">Modalidad de exportación:</span>
+                <select id="modalidadBatch"
+                    style="flex:1; padding:8px 12px; background:#141414; border:1px solid #1e1e1e;
+                           border-radius:8px; color:#fff; font-size:12px; font-family:'Inter',sans-serif;">
+                    <option value="detallado" selected>Por producto (una fila por línea, incluye SKU)</option>
+                    <option value="factura">Por factura (una fila por documento)</option>
+                </select>
+            </div>    
+            
             <div style="display:flex; gap:10px; margin-top:4px;">
                 <button class="btn-excel" id="btnExcelBatch" onclick="descargarExcelBatch()"
                     style="flex:1;">
@@ -642,7 +653,7 @@
                        font-family:'Inter',sans-serif; transition:all 0.2s;"
                 onmouseover="this.style.color='#fff'"
                 onmouseout="this.style.color='#888'">↻ Actualizar</button>
-            <button onclick="exportarHistorialCompleto()"
+                <button onclick="exportarHistorialCompleto()"
                 id="btnExportarHistorial"
                 style="padding:10px 16px; background:transparent; color:#4CAF50;
                        border:1px solid #4CAF50; border-radius:10px; font-size:12px;
@@ -652,6 +663,27 @@
                 onmouseout="this.style.background='transparent';this.style.color='#4CAF50'">
                 ⬇ Exportar todo
             </button>
+            
+            <select id="rangoReporte"
+                style="padding:10px 12px; background:#141414; border:1px solid #1e1e1e;
+                       border-radius:10px; color:#fff; font-size:12px; font-family:'Inter',sans-serif;">
+                <option value="7">Últimos 7 días</option>
+                <option value="15">Últimos 15 días</option>
+                <option value="30" selected>Últimos 30 días</option>
+                <option value="60">Últimos 60 días</option>
+            </select>
+            
+            <button onclick="exportarHistorialPorRango()"
+                id="btnExportarRango"
+                style="padding:10px 16px; background:transparent; color:#00BCD4;
+                       border:1px solid #00BCD4; border-radius:10px; font-size:12px;
+                       cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.2s;
+                       white-space:nowrap;"
+                onmouseover="this.style.background='#00BCD4';this.style.color='#080808'"
+                onmouseout="this.style.background='transparent';this.style.color='#00BCD4'">
+                ⬇ Exportar rango
+            </button>
+            
 
         </div>
 
@@ -1266,19 +1298,28 @@ document.addEventListener('click', e => {
     if (e.target === document.getElementById('modalOverlay')) cerrarModal();
 });
 
+// Reads the modalidadBatch selector to decide which backend route to
+// call: product-level detail (default) or one row per invoice.
 async function descargarExcelBatch() {
     if (!datosBatch) return;
     const btn = document.getElementById('btnExcelBatch');
     btn.textContent = 'Generando...'; btn.disabled = true;
+
+    const modalidad = document.getElementById('modalidadBatch').value;
+    const ruta = modalidad === 'detallado'
+        ? '/download/excel/batch/detallado'
+        : '/download/excel/batch';
+    const sufijoNombre = modalidad === 'detallado' ? 'detallado' : 'resumen';
+
     try {
-        const res = await fetch('/download/excel/batch', {
+        const res = await fetch(ruta, {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ resultados: datosBatch })
         });
         const blob = await res.blob();
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `lote_${new Date().toISOString().slice(0,10)}.xlsx`;
+        a.download = `lote_${sufijoNombre}_${new Date().toISOString().slice(0,10)}.xlsx`;
         a.click();
     } catch(e) { alert('Error al generar Excel del lote'); }
     btn.textContent = '⬇ Descargar Excel consolidado'; btn.disabled = false;
@@ -1434,9 +1475,40 @@ async function exportarHistorialCompleto() {
     btn.textContent = '⬇ Exportar todo'; btn.disabled = false;
 }
 
+// Downloads the product-level detail report for the range selected
+// in the rangoReporte dropdown (7/15/30/60 days).
+async function exportarHistorialPorRango() {
+    const btn = document.getElementById('btnExportarRango');
+    const dias = document.getElementById('rangoReporte').value;
+    btn.textContent = 'Generando...'; btn.disabled = true;
+
+    try {
+        const res = await fetch(`/historial/exportar-rango?dias=${dias}`);
+        if (!res.ok) {
+            const data = await res.json();
+            alert(data.error || 'Error al exportar el reporte por rango.');
+            btn.textContent = '⬇ Exportar rango'; btn.disabled = false;
+            return;
+        }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `reporte_${dias}dias_${new Date().toISOString().slice(0,10)}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    } catch (e) {
+        alert('Error al exportar el reporte por rango.');
+    }
+
+    btn.textContent = '⬇ Exportar rango'; btn.disabled = false;
+}
+
 // ── GOOGLE SHEETS ──────────────────────────────────────────────────────────────
 async function exportarSheetsSingle() {
     if (!datosSingle) return;
+
+    // URL de TU hoja de Google Sheets — leída primero para poder validarla
+    const SHEET_URL = "{{ current_user.sheet_url or '' }}";
     if (!SHEET_URL) {
         mostrarErr('errorSingle','errorTextSingle','Configura tu URL de Google Sheets arriba antes de exportar.');
         return;
@@ -1445,9 +1517,6 @@ async function exportarSheetsSingle() {
     btn.textContent = 'Exportando...'; btn.disabled = true;
 
     const datosFinales = leerDatosEditados();
-
-    // URL de TU hoja de Google Sheets
-    const SHEET_URL = "{{ current_user.sheet_url or '' }}";
 
     try {
         const res = await fetch('/export/sheets', {
@@ -1471,8 +1540,13 @@ async function exportarSheetsSingle() {
     btn.textContent = '↗ Google Sheets'; btn.disabled = false;
 }
 
+// Reads the modalidadBatch selector to decide which backend route to
+// call: product-level detail (default) or one row per invoice.
 async function exportarSheetsBatch() {
     if (!datosBatch) return;
+
+    // URL de TU hoja de Google Sheets — leída primero para poder validarla
+    const SHEET_URL = "{{ current_user.sheet_url or '' }}";
     if (!SHEET_URL) {
         mostrarErr('errorBatch','errorTextBatch','Configura tu URL de Google Sheets arriba antes de exportar.');
         return;
@@ -1480,10 +1554,13 @@ async function exportarSheetsBatch() {
     const btn = document.getElementById('btnSheetsBatch');
     btn.textContent = 'Exportando lote...'; btn.disabled = true;
 
-    const SHEET_URL = "{{ current_user.sheet_url or '' }}";
+    const modalidad = document.getElementById('modalidadBatch').value;
+    const ruta = modalidad === 'detallado'
+        ? '/export/sheets/batch/detallado'
+        : '/export/sheets/batch';
 
     try {
-        const res = await fetch('/export/sheets/batch', {
+        const res = await fetch(ruta, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({

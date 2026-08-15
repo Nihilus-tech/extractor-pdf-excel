@@ -5,13 +5,13 @@ Replaces the previous SQLite-based db_historial.py, since Cloud Run
 containers do not persist local files across restarts.
 """
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from google.cloud import firestore
 from flask_login import UserMixin
 
 # Single shared Firestore client for the whole app.
-# In Cloud Run this authenticates automatically via the default
+# In Cloud Run this authenticates automatically via the default 
 # service account. Locally it uses the credentials created by
 # "gcloud auth application-default login".
 #
@@ -315,8 +315,12 @@ def guardar_extraccion(filename: str, datos: dict) -> None:
         datos: the structured extraction result dict from the AI.
     """
     try:
+        momento_actual = datetime.now()
         db.collection(HISTORIAL_COLLECTION).document().set({
-            "fecha": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "fecha": momento_actual.strftime("%d/%m/%Y %H:%M"),
+            # Real datetime for reliable range filtering (e.g. "last 15
+            # days"), stored alongside the display-only text field above.
+            "fecha_timestamp": momento_actual,
             "filename": filename,
             "tipo": datos.get("tipo_documento"),
             "emisor": _extraer_nombre_emisor(datos),
@@ -329,7 +333,6 @@ def guardar_extraccion(filename: str, datos: dict) -> None:
         })
     except Exception as e:
         print(f"[firestore_db] Error saving extraction for {filename}: {e}")
-
 
 def guardar_lote(resultados: list) -> None:
     """
@@ -345,13 +348,17 @@ def guardar_lote(resultados: list) -> None:
         # network round trip, which is both faster and safer than
         # looping with individual .set() calls for large batches.
         batch = db.batch()
-        fecha_actual = datetime.now().strftime("%d/%m/%Y %H:%M")
+        momento_actual = datetime.now()
+        fecha_actual = momento_actual.strftime("%d/%m/%Y %H:%M")
 
         for resultado in resultados:
             datos = resultado.get("datos", {})
             doc_ref = db.collection(HISTORIAL_COLLECTION).document()
             batch.set(doc_ref, {
                 "fecha": fecha_actual,
+                # Real datetime for reliable range filtering, stored
+                # alongside the display-only text field above.
+                "fecha_timestamp": momento_actual,
                 "filename": resultado.get("filename", ""),
                 "tipo": datos.get("tipo_documento"),
                 "emisor": _extraer_nombre_emisor(datos),
@@ -625,3 +632,45 @@ def buscar_precios_historicos_producto(
     except Exception as e:
         print(f"[firestore_db] Error searching historical prices: {e}")
         return []
+        
+
+
+def obtener_historial_por_rango(dias: int) -> list:
+    """
+    Returns every historial entry from the last N days, based on the
+    real fecha_timestamp field (not the display-only text field).
+
+    Documents saved before fecha_timestamp existed (see Bloque 22)
+    will not appear here, since they have no timestamp to compare
+    against.
+
+    Args:
+        dias: how many days back to include (e.g. 7, 15, 30, 60).
+
+    Returns:
+        List of dicts with filename, fecha, and datos — same shape as
+        obtener_historial_completo(), ready to feed into the existing
+        Excel/Sheets batch export functions.
+    """
+    try:
+        fecha_limite = datetime.now() - timedelta(days=dias)
+
+        query = (
+            db.collection(HISTORIAL_COLLECTION)
+            .where("fecha_timestamp", ">=", fecha_limite)
+            .order_by("fecha_timestamp", direction=firestore.Query.DESCENDING)
+        )
+        docs = query.stream()
+
+        return [
+            {
+                "filename": doc.to_dict().get("filename", ""),
+                "fecha": doc.to_dict().get("fecha", ""),
+                "datos": doc.to_dict().get("datos", {})
+            }
+            for doc in docs
+        ]
+    except Exception as e:
+        print(f"[firestore_db] Error getting historial by range ({dias} days): {e}")
+        return []
+

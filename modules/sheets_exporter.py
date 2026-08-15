@@ -119,7 +119,12 @@ def exportar_lote_a_sheets(resultados, sheet_url=None, nombre_lote=None):
             rows=200, cols=10
         )
 
-    encabezado_resumen = [["#", "Archivo", "Tipo", "Emisor", "Fecha", "Total", "Moneda"]]
+    # Full header-level columns, mirroring the Excel "Resumen General" sheet
+    encabezado_resumen = [[
+        "#", "Archivo", "Tipo", "N° Documento", "Fecha Emisión",
+        "Emisor", "RFC Emisor", "Receptor", "Subtotal", "Impuestos",
+        "Total", "Moneda", "Método Pago"
+    ]]
     ws_resumen.update("A1", encabezado_resumen)
 
     total_global = 0
@@ -129,17 +134,26 @@ def exportar_lote_a_sheets(resultados, sheet_url=None, nombre_lote=None):
         total = valor_simple(d.get("total"))
         if isinstance(total, (int, float)):
             total_global += total
-        emisor_nombre = "—"
-        if d.get("emisor") and isinstance(d.get("emisor"), dict):
-            emisor_nombre = d["emisor"].get("nombre") or "—"
+
+        # emisor/receptor can be missing or malformed in the AI response,
+        # so default to an empty dict before reading nested fields
+        emisor_dict = d.get("emisor") if isinstance(d.get("emisor"), dict) else {}
+        receptor_dict = d.get("receptor") if isinstance(d.get("receptor"), dict) else {}
+
         filas_resumen.append([
             i + 1,
             r.get("filename", ""),
             d.get("tipo_documento") or "—",
-            emisor_nombre,
+            d.get("numero_documento") or "—",
             d.get("fecha_emision") or "—",
+            emisor_dict.get("nombre") or "—",
+            emisor_dict.get("rfc") or "—",
+            receptor_dict.get("nombre") or "—",
+            valor_simple(d.get("subtotal")),
+            valor_simple(d.get("impuestos")),
             total,
             d.get("moneda") or "MXN",
+            d.get("metodo_pago") or "—",
         ])
 
     if filas_resumen:
@@ -199,3 +213,109 @@ def exportar_lote_a_sheets(resultados, sheet_url=None, nombre_lote=None):
             ])
 
     return {"url": sheet_url, "nombre": nombre_resumen}
+
+
+def exportar_lote_a_sheets_detallado(resultados: list[dict], sheet_url: str = None) -> dict:
+    """
+    Exports a batch of processed documents to Google Sheets as a
+    product-level consolidated table: one row per product line item,
+    repeating the parent invoice's header data on every row. Mirrors
+    generar_excel_batch_detallado() but writes to Sheets instead of
+    an .xlsx file.
+
+    Args:
+        resultados: list of dicts, each with "filename" and "datos"
+            keys, where "datos" is the structured extraction result.
+        sheet_url: URL of the user's own Google Sheet.
+
+    Returns:
+        Dict with "url" and "nombre" keys pointing to the created tab.
+
+    Raises:
+        Exception: if Google credentials are not configured, or if
+            sheet_url is missing.
+    """
+    if not credentials_disponibles():
+        raise Exception("Credenciales de Google no configuradas.")
+    if not sheet_url:
+        raise Exception("Debes proporcionar la URL de tu hoja de Google Sheets.")
+
+    client = get_client()
+    sh = client.open_by_url(sheet_url)
+
+    nombre_tab = f"Detalle {datetime.now().strftime('%d/%m %H:%M')}"
+    try:
+        ws = sh.add_worksheet(title=nombre_tab, rows=1000, cols=20)
+    except Exception:
+        ws = sh.add_worksheet(
+            title=f"Detalle_{datetime.now().strftime('%H%M')}",
+            rows=1000, cols=20
+        )
+
+    encabezados = [
+        "#", "Archivo", "Tipo", "N° Documento", "Fecha Emisión",
+        "Emisor", "RFC Emisor", "Receptor", "Método Pago",
+        "Descripción", "SKU", "Cantidad", "Precio Unitario", "Importe",
+        "Subtotal Factura", "Impuestos Factura", "Total Factura", "Moneda"
+    ]
+    filas_completas = [encabezados]
+
+    contador_linea = 1
+    total_global = 0.0
+
+    for resultado in resultados:
+        d = resultado.get("datos", {})
+        filename = resultado.get("filename", "")
+
+        # emisor/receptor can be missing or malformed in the AI response,
+        # so default to an empty dict before reading nested fields
+        emisor_dict = d.get("emisor") if isinstance(d.get("emisor"), dict) else {}
+        receptor_dict = d.get("receptor") if isinstance(d.get("receptor"), dict) else {}
+        items = d.get("items") or []
+
+        subtotal_doc = valor_simple(d.get("subtotal"))
+        impuestos_doc = valor_simple(d.get("impuestos"))
+        total_doc = valor_simple(d.get("total"))
+        if isinstance(total_doc, (int, float)):
+            total_global += total_doc
+
+        # Header fields shared by this invoice, computed once and
+        # repeated on every product row below
+        cabecera = [
+            filename,
+            d.get("tipo_documento") or "—",
+            d.get("numero_documento") or "—",
+            d.get("fecha_emision") or "—",
+            emisor_dict.get("nombre") or "—",
+            emisor_dict.get("rfc") or "—",
+            receptor_dict.get("nombre") or "—",
+            d.get("metodo_pago") or "—",
+        ]
+
+        # If the AI found no items, still emit one row so the invoice
+        # is not silently dropped from the consolidated view
+        filas_producto = items if items else [{}]
+
+        for item in filas_producto:
+            fila = [
+                contador_linea,
+                *cabecera,
+                item.get("descripcion", ""),
+                item.get("sku") or "—",
+                valor_simple(item.get("cantidad")),
+                valor_simple(item.get("precio_unitario")),
+                valor_simple(item.get("importe")),
+                subtotal_doc,
+                impuestos_doc,
+                total_doc,
+                d.get("moneda") or "MXN",
+            ]
+            filas_completas.append(fila)
+            contador_linea += 1
+
+    ws.update("A1", filas_completas)
+
+    fila_total = len(filas_completas) + 2
+    ws.update(f"A{fila_total}", [["TOTAL GLOBAL", total_global]])
+
+    return {"url": sheet_url, "nombre": nombre_tab}    
