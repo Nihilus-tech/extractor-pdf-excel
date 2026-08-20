@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import json
+import time
 from groq import Groq
 
 
@@ -333,11 +334,128 @@ ESTRUCTURA JSON REQUERIDA:
 
 
 # ── FUNCIÓN PRINCIPAL ──────────────────────────────────────────────────────────
+def _llamar_groq_con_reintentos(client: Groq, prompt: str, max_intentos: int = 3):
+    """
+    Calls the Groq chat completion endpoint with exponential backoff
+    retries. Retries on network errors, 5xx server errors, and 429
+    rate limit responses; does not retry on other error types, since
+    those are unlikely to be resolved by waiting.
+
+    Args:
+        client: an initialized Groq client.
+        prompt: the full prompt text to send to the model.
+        max_intentos: maximum number of attempts before giving up.
+
+    Returns:
+        The Groq API response object on success.
+
+    Raises:
+        Exception: the last error encountered, if all attempts fail.
+    """
+    ultimo_error = None
+
+    for intento in range(1, max_intentos + 1):
+        try:
+            return client.chat.completions.create(
+                model="openai/gpt-oss-20b",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=2000,
+                temperature=0.1
+            )
+        except Exception as e:
+            ultimo_error = e
+            mensaje_error = str(e)
+
+            # Only retry on transient errors: rate limits, timeouts,
+            # and 5xx server errors. Anything else (e.g. bad request,
+            # auth failure) will not be fixed by waiting, so fail fast.
+            es_reintentable = (
+                "429" in mensaje_error
+                or "rate_limit" in mensaje_error.lower()
+                or "timeout" in mensaje_error.lower()
+                or "500" in mensaje_error
+                or "502" in mensaje_error
+                or "503" in mensaje_error
+                # Also retry on generic network-level exceptions, which
+                # may not include any of the strings above in their message
+                or isinstance(e, (ConnectionError, TimeoutError))
+            )
+
+            if not es_reintentable or intento == max_intentos:
+                raise
+
+            espera_segundos = 2 ** (intento - 1)  # 1s, 2s, 4s
+            print(f"[ai_extractor] Intento {intento}/{max_intentos} fallo: {mensaje_error}. Reintentando en {espera_segundos}s...")
+            time.sleep(espera_segundos)
+
+    raise ultimo_error
+
+
+def _clasificar_error_extraccion(excepcion: Exception, contexto: str = "ia") -> dict:
+    """
+    Classifies an exception into a specific, user-facing error category.
+    This avoids returning generic "something went wrong" messages, and
+    lets the frontend show actionable guidance instead.
+
+    Args:
+        excepcion: the raised exception to classify.
+        contexto: where the error occurred — "ia" for LLM call errors,
+            "json" for response parsing errors. Used to pick the right
+            category when the exception type alone is ambiguous.
+
+    Returns:
+        A dict with keys "categoria" (short machine-readable label) and
+        "mensaje" (human-readable message safe to show the user).
+    """
+    mensaje_error = str(excepcion)
+    mensaje_lower = mensaje_error.lower()
+
+    if contexto == "json":
+        return {
+            "categoria": "json_malformado",
+            "mensaje": "La IA devolvió una respuesta con formato inválido. Intenta procesar el documento de nuevo."
+        }
+
+    if "429" in mensaje_error or "rate_limit" in mensaje_lower:
+        return {
+            "categoria": "rate_limit",
+            "mensaje": "El sistema está muy solicitado en este momento. Espera unos 30 segundos e intenta de nuevo."
+        }
+
+    if "timeout" in mensaje_lower or isinstance(excepcion, TimeoutError):
+        return {
+            "categoria": "timeout_api",
+            "mensaje": "El servicio de IA tardó demasiado en responder. Intenta de nuevo en un momento."
+        }
+
+    if "500" in mensaje_error or "502" in mensaje_error or "503" in mensaje_error:
+        return {
+            "categoria": "error_servidor_ia",
+            "mensaje": "El servicio de IA está teniendo problemas técnicos. Intenta de nuevo en unos minutos."
+        }
+
+    if "401" in mensaje_error or "403" in mensaje_error or "authentication" in mensaje_lower:
+        return {
+            "categoria": "credenciales_invalidas",
+            "mensaje": "Hay un problema con la configuración del servicio de IA. Contacta al administrador."
+        }
+
+    if isinstance(excepcion, ConnectionError):
+        return {
+            "categoria": "error_red",
+            "mensaje": "No se pudo conectar con el servicio de IA. Revisa tu conexión e intenta de nuevo."
+        }
+
+    return {
+        "categoria": "error_desconocido_ia",
+        "mensaje": "Ocurrió un error inesperado al procesar el documento con IA. Intenta de nuevo."
+    }
+
 def extraer_datos(texto_pdf):
     """
     1. Detecta el tipo de documento por palabras clave
     2. Construye un prompt especializado para ese tipo
-    3. Llama a Groq y parsea el JSON de respuesta
+    3. Llama a Groq (con reintentos automaticos) y parsea el JSON de respuesta
     4. Combina la confianza reportada por la IA con la validacion por reglas
     """
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -346,24 +464,15 @@ def extraer_datos(texto_pdf):
     prompt = construir_prompt(texto_pdf, tipo_detectado)
 
     try:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2000,
-            temperature=0.1
-        )
+        response = _llamar_groq_con_reintentos(client, prompt)
     except Exception as e:
-        mensaje_error = str(e)
-        if "429" in mensaje_error or "rate_limit" in mensaje_error.lower():
-            return {
-                "exito": False,
-                "error": "El sistema está muy solicitado en este momento. Espera unos 30 segundos e intenta de nuevo."
-            }
+        clasificacion = _clasificar_error_extraccion(e, contexto="ia")
         return {
             "exito": False,
-            "error": "Ocurrió un error al conectar con el servicio de IA. Intenta de nuevo en un momento."
+            "categoria_error": clasificacion["categoria"],
+            "error": clasificacion["mensaje"]
         }
-
+    
     respuesta_texto = response.choices[0].message.content.strip()
     respuesta_texto = (respuesta_texto
         .replace("```json", "")
@@ -393,10 +502,13 @@ def extraer_datos(texto_pdf):
         datos["_confianza"] = confianza_final
 
         return {"exito": True, "datos": datos}
+    
     except json.JSONDecodeError as e:
+        clasificacion = _clasificar_error_extraccion(e, contexto="json")
         return {
             "exito": False,
-            "error": f"Error al parsear JSON: {str(e)}",
+            "categoria_error": clasificacion["categoria"],
+            "error": clasificacion["mensaje"],
             "respuesta_cruda": respuesta_texto
         }
 

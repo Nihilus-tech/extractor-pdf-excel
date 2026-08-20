@@ -3,6 +3,12 @@ import os
 import platform
 import pytesseract
 from PIL import Image
+from pillow_heif import register_heif_opener
+
+# Registers HEIC/HEIF support into Pillow's Image.open(), so the rest
+# of this module does not need any HEIC-specific branching — Image.open()
+# will transparently handle .heic files the same way it handles .jpg.
+register_heif_opener()
 
 # En Windows local, Tesseract esta en una ruta especifica.
 # En el contenedor Docker (Linux/Cloud Run), esta en el PATH del sistema

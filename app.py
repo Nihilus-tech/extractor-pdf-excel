@@ -5,6 +5,7 @@ import os
 import re
 from datetime import datetime
 from modules.pdf_reader import extraer_texto_pdf
+from modules.xml_reader import extraer_texto_xml
 from modules.ai_extractor import extraer_datos
 from modules.excel_generator import generar_excel
 from modules.excel_generator import generar_excel, generar_excel_batch, generar_excel_batch_detallado
@@ -57,7 +58,7 @@ def crear_admin_inicial():
 
 crear_admin_inicial()
 
-ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
+ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "heic", "heif", "tiff", "tif", "bmp", "webp", "xml"}
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -85,10 +86,16 @@ def extract():
     file.save(filepath)
 
     try:
-        # Paso 1: extraer texto del PDF
+        # Route to the correct reader based on file type: images go
+        # through OCR, XML is parsed as structured text, PDF uses
+        # native text extraction.
         extension = filename_clean.rsplit(".", 1)[1].lower()
-        if extension in ("jpg", "jpeg", "png"):
+        extensiones_imagen = {"jpg", "jpeg", "png", "heic", "heif", "tiff", "tif", "bmp", "webp"}
+
+        if extension in extensiones_imagen:
             resultado_pdf = extraer_texto_imagen(filepath)
+        elif extension == "xml":
+            resultado_pdf = extraer_texto_xml(filepath)
         else:
             resultado_pdf = extraer_texto_pdf(filepath)
 
@@ -140,11 +147,23 @@ def extract():
             "num_paginas": resultado_pdf["num_paginas"],
             "datos": datos
         })
-
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+
+        mensaje_error = str(e).lower()
+        if "pdf" in mensaje_error and ("eof" in mensaje_error or "corrupt" in mensaje_error or "damaged" in mensaje_error):
+            categoria = "pdf_corrupto"
+            mensaje_usuario = "El archivo PDF parece estar dañado o corrupto. Intenta con otro archivo."
+        elif "encrypt" in mensaje_error or "password" in mensaje_error:
+            categoria = "pdf_protegido"
+            mensaje_usuario = "El PDF está protegido con contraseña. Quita la protección e intenta de nuevo."
+        else:
+            categoria = "error_procesamiento"
+            mensaje_usuario = "Ocurrió un error al procesar el archivo. Verifica que sea un PDF o imagen válida."
+
+        return jsonify({"categoria_error": categoria, "error": mensaje_usuario}), 500    
+       
 
 
 @app.route("/download/excel", methods=["POST"])
@@ -174,12 +193,15 @@ def extract_batch():
         return jsonify({"error": "No se recibieron archivos"}), 400
 
     files = request.files.getlist("files")
-    
-    # Filtrar solo PDFs válidos
-    archivos_validos = [f for f in files if f.filename.lower().endswith(".pdf")]
-    
+
+    # Filter by the same allowed extensions used in single-file mode,
+    # so batch mode can mix PDFs, images, and XML in one upload —
+    # previously this only accepted ".pdf", silently dropping any
+    # other valid file type the user selected.
+    archivos_validos = [f for f in files if allowed_file(f.filename)]
+
     if not archivos_validos:
-        return jsonify({"error": "Ningún archivo PDF válido recibido"}), 400
+        return jsonify({"error": "Ningún archivo válido recibido. Formatos aceptados: PDF, JPG, PNG, HEIC, TIFF, BMP, WEBP, XML"}), 400
 
     if len(archivos_validos) > 500:
         return jsonify({"error": "Máximo 500 archivos por lote"}), 400
@@ -194,8 +216,12 @@ def extract_batch():
 
         try:
             extension = filename_clean.rsplit(".", 1)[1].lower()
-            if extension in ("jpg", "jpeg", "png"):
+            extensiones_imagen = {"jpg", "jpeg", "png", "heic", "heif", "tiff", "tif", "bmp", "webp"}
+
+            if extension in extensiones_imagen:
                 resultado_pdf = extraer_texto_imagen(filepath)
+            elif extension == "xml":
+                resultado_pdf = extraer_texto_xml(filepath)
             else:
                 resultado_pdf = extraer_texto_pdf(filepath)
 
@@ -222,7 +248,17 @@ def extract_batch():
             })
 
         except Exception as e:
-            errores.append({"filename": filename_clean, "error": str(e)})
+            mensaje_error = str(e).lower()
+            if "pdf" in mensaje_error and ("eof" in mensaje_error or "corrupt" in mensaje_error or "damaged" in mensaje_error):
+                categoria = "pdf_corrupto"
+                mensaje_usuario = "El archivo parece estar dañado o corrupto."
+            elif "encrypt" in mensaje_error or "password" in mensaje_error:
+                categoria = "pdf_protegido"
+                mensaje_usuario = "El PDF está protegido con contraseña."
+            else:
+                categoria = "error_procesamiento"
+                mensaje_usuario = "Error al procesar el archivo. Verifica que sea un PDF o imagen válida."
+            errores.append({"filename": filename_clean, "categoria_error": categoria, "error": mensaje_usuario})
 
     guardar_lote(resultados)
 
