@@ -268,27 +268,104 @@ con una función propia de ~40 líneas. Se reevaluará esta decisión si en
 el futuro (ej. Proyecto 8, voz en tiempo real) existen 3+ puntos de
 llamada a LLMs con necesidades distintas.
 
-### Bloque 28 — 🔲 PENDIENTE
+### Bloque 28 — ✅ COMPLETADO
 **Archivo:** `modules/ai_extractor.py`
 **Qué hace:** función propia de fallback — si el proveedor principal
 (Groq) falla o excede rate limit después de los reintentos del Bloque
 25, intentar automáticamente con un segundo proveedor configurado por
 variable de entorno.
 
-### Bloque 29 — 🔲 PENDIENTE
-**Archivo:** `modules/ai_extractor.py`, `modules/firestore_db.py`
-**Qué hace:** capturar por cada extracción: latencia total, conteo de
-tokens de entrada/salida (Groq los expone en `response.usage`), y
-estimación de costo en USD/MXN según tarifa del modelo. Guardar en
-Firestore (extender el documento de historial, o colección nueva
-`metricas_llm` — decidir en el momento según qué tan pesado resulte
-para las lecturas normales del historial).
+### Bloque 28 — ✅ COMPLETADO
+**Archivos:** `modules/ai_extractor.py`, `requirements.txt`, `.env`
+**Qué se hizo:**
+- Se agregó fallback automático a Google Gemini cuando Groq falla.
+  Proveedor elegido por decisión explícita: Gemini (capa gratuita,
+  ya integrado en el stack vía GCP), sobre otra cuenta de Groq (no
+  protege ante caída del proveedor completo) y sobre dejarlo sin
+  configurar (se prefirió resiliencia real de una vez).
+- SDK usado: `google-genai` (el nuevo) — se descartó
+  `google-generativeai` por estar deprecado segun aviso oficial del
+  propio paquete.
+- Modelo elegido: `gemini-flash-latest` — alias que Google mantiene
+  apuntando siempre al Flash estable mas reciente, evitando fijar una
+  version especifica que eventualmente se deprecara (mismo problema
+  que ya vivimos con `llama-3.1-8b-instant` en Groq).
+- Clase `_RespuestaSimulada` normaliza la respuesta de Gemini
+  (`response.text`) al mismo formato que usa Groq
+  (`response.choices[0].message.content`), para que `extraer_datos()`
+  no necesite saber cual proveedor respondio.
+- **Decisión de diseño clave:** el fallback se dispara tanto en
+  errores transitorios de Groq (rate limit, timeout, 5xx) como en
+  errores de autenticacion (401/403) — se cambio el `raise` original
+  por `break` dentro del ciclo de reintentos, para que el flujo
+  siempre llegue al bloque de fallback sin importar el tipo de error,
+  maximizando disponibilidad del sistema.
+- Si Gemini también falla, se propaga el error original de Groq (no
+  el de Gemini), para que `_clasificar_error_extraccion()` lo
+  reconozca correctamente.
+- Probado end-to-end con prompt real de produccion (no solo prueba
+  aislada de mecanica): con key de Groq invalida a proposito, el
+  fallback extrajo correctamente RFC, totales, items y categorizacion
+  de un documento de prueba via Gemini, en formato JSON estricto sin
+  markdown ni texto extra.
 
-### Bloque 30 — 🔲 PENDIENTE
-**Archivo:** `templates/dashboard.html`, `app.py` (ruta `/dashboard`)
+### Bloque 28.5 — Selección de proveedor de IA (admin + usuario final)
+**Motivo:** además de preparar el terreno para una futura API de pago
+(ver Bloque 28), el usuario final debe poder elegir entre los
+proveedores ya disponibles (Groq / Gemini) — con una preferencia
+guardada por default y la posibilidad de cambiarla puntualmente en
+cada extracción. Se divide en 4 sub-bloques para mantener cada cambio
+pequeño y verificable, tras el aprendizaje del Bloque 26 (los cambios
+grandes de una sola vez son mas dificiles de depurar).
+
+**Prioridad de resolución (mas especifico gana):**
+selector en esa extraccion puntual > preferencia guardada del usuario
+> `PROVEEDOR_IA_PRINCIPAL` en `.env` (default global del sistema).
+
+- **28.5a — ✅ COMPLETADO**: extraer `_llamar_groq_con_reintentos()`,
+  `_llamar_gemini_fallback()` y `_RespuestaSimulada` de
+  `ai_extractor.py` hacia módulo nuevo `modules/ai_provider.py`
+  (agnóstico de dominio — no sabe nada de facturas/PDFs). Nueva
+  variable `PROVEEDOR_IA_PRINCIPAL=groq` en `.env`. `ai_extractor.py`
+  importa desde el módulo nuevo. Sin cambios de comportamiento, solo
+  reorganización.
+- **28.5b — ✅ COMPLETADO**: la función despachadora en
+  `ai_provider.py` acepta parámetro opcional `proveedor_forzado`.
+  `extraer_datos()` en `ai_extractor.py` puede recibir y pasar ese
+  parámetro hacia abajo. Backend listo para recibir la elección, sin
+  tocar frontend ni Firestore todavía.
+- **28.5c — ✅ COMPLETADO**: campo nuevo `proveedor_ia_preferido` en
+  el documento de usuario en Firestore (mismo patrón que `sheet_url`).
+  Nueva función en `firestore_db.py` para guardar/leer la preferencia.
+  Ruta nueva `/perfil/proveedor-ia` en `app.py` (mismo patrón que
+  `/perfil/sheet-url`).
+- **28.5d — ✅ COMPLETADO**: selector visual en `templates/index.html`
+  — botón "☰ Modelo de IA" (ícono de hamburguesa + texto, para que el
+  usuario sepa qué hace antes de abrirlo) que despliega horizontalmente
+  las opciones Groq/Gemini, con la opción activa resaltada (default:
+  preferencia guardada del usuario, o si no tiene, el default global).
+  Conectado a `/extract` y `/extract/batch` para mandar el override
+  cuando el usuario lo elija explícitamente.
+
+### Bloque 29 — captura de métricas del LLM
+**Archivo:** `modules/ai_provider.py` (no `ai_extractor.py` —
+la lógica de llamadas a proveedores vive ahí desde el Bloque 28.5),
+`modules/firestore_db.py` 
+**Qué hace:** captura por cada llamada a IA (desde el módulo
+compartido, cubriendo tanto Groq como el fallback de Gemini): latencia
+total, conteo de tokens de entrada/salida (expuestos en
+`response.usage` para Groq; pendiente confirmar el equivalente exacto
+en la respuesta de Gemini), y estimación de costo en USD/MXN según
+tarifa del modelo. Guardado en Firestore — extender el documento de
+historial o colección nueva `metricas_llm`, decidir según qué tan
+pesado resulte para las lecturas normales del historial.
+
+### Bloque 30 — Sin cambios respecto al plan original
+**Archivos:** `templates/dashboard.html`, `app.py` (ruta `/dashboard`)
 **Qué hace:** mostrar las métricas del Bloque 29 en el dashboard —
 latencia promedio, tokens totales consumidos, costo acumulado
-estimado, tasa de éxito/error de extracciones.
+estimado, tasa de éxito/error de extracciones, y qué proporción de
+llamadas usó el proveedor principal vs el fallback.
 
 ---
 
@@ -313,6 +390,82 @@ diferenciar, por ejemplo, la misma funda de teléfono por color o
 material). Este cambio es solo visual, en la presentación de la
 alerta, no en los datos ni en su granularidad.
 ---
+#### Pendiente cosmetico  — Rediseño de UI/UX (paleta + dashboard)
+**Contexto:** revisión visual tras completar el Bloque 28.5. Decisiones
+de diseño ya tomadas con el usuario, listas para implementar cuando
+se retome. Se divide en 4 sub-bloques para verificar cada uno por
+separado, siguiendo el mismo criterio usado en bloques anteriores.
+
+**Paleta de colores — decisiones finales:**
+- Cian (`#00BCD4`): se mantiene como color de marca principal
+  (titulo, drop-zone, acentos generales). Sin cambios.
+- Verde (`#4CAF50`): se mantiene como "accion positiva" (Guardar,
+  Extraer, exportar exitoso). Sin cambios.
+- Morado (nuevo, tono por definir en implementacion): reemplaza el
+  naranja actual. Aplica a: badge "Admin", boton "Ver historial", y
+  todos los botones de navegacion encapsulados nuevos (ver tabla).
+- Rojo (`#EF5350`, ya existente para errores): tambien para el boton
+  "Cerrar sesion" en todas las pantallas, para reforzar su semantica
+  de "accion de salida/precaucion".
+
+**Botones a encapsular — TODOS los botones de navegacion del proyecto,
+en las 3 pantallas, deben tener el mismo tratamiento visual que el
+badge "Admin" actual (capsula con borde/fondo de color), no solo texto
+con hover como estan Dashboard/Cerrar sesion hoy:**
+
+| Pantalla | Botones a encapsular |
+|---|---|
+| `templates/index.html` | Admin (ya existe, cambia naranja→morado) · Dashboard (nuevo, morado) · Cerrar sesion (nuevo, rojo) |
+| `templates/dashboard.html` | Dashboard (nuevo, morado) · Extractor (nuevo, morado) |
+| `templates/admin.html` | Extractor (nuevo, morado) · Dashboard (nuevo, morado) · Cerrar sesion (nuevo, rojo) |
+
+**Sub-bloques:**
+- **UI-1 — 🔲 PENDIENTE**: nav encapsulado completo en las 3 pantallas
+  (tabla de arriba), badge Admin de naranja a morado.
+- **UI-2 — 🔲 PENDIENTE**: boton "Ver historial" (en `index.html`) a
+  morado, mismo tratamiento que el resto de acentos morados nuevos.
+- **UI-3 — 🔲 PENDIENTE**: rediseño de tarjetas de metricas en
+  `dashboard.html` con gradiente morado fuerte, inspirado en
+  referencias visuales aprobadas por el usuario (tarjetas tipo "Total
+  Finance / Total Expense" con donut de progreso integrado). Mejor
+  aprovechamiento del espacio horizontal — hoy hay mucho espacio negro
+  vacio a la derecha de las graficas. Cambio mas grande de los 4,
+  trabajar por separado del resto.
+- **UI-4 — 🔲 PENDIENTE**: los campos "Mi Google Sheets" y "Proveedor
+  de IA preferido" en el nav de `index.html` pasan de tamaño fijo a
+  desplegables horizontales — solo el label visible por default, clic
+  para expandir selector + boton guardar (mismo patron que el selector
+  "☰ Modelo de IA" ya implementado en el Bloque 28.5d).
+
+**Pendiente de definir en el momento de implementar:**
+- Tono exacto del morado (no se fijo un hex especifico todavia).
+- Diseño del icono/badge de "Admin" en si — el usuario buscara
+  referencias visuales antes de ese sub-bloque.
+
+**Prioridad:** cosmetico, no bloquea funcionalidad. Se retoma despues
+de cerrar los bloques pendientes de la Fase 6 (Bloque 29 y 30).
+
+
+### Pendiente funcional — Actualizar version de Python
+**Contexto:** en cada arranque de `app.py`, aparece el aviso:
+`FutureWarning: You are using a Python version (3.10.20) which Google
+will stop supporting in new releases of google.api_core once it
+reaches its end of life (2026-10-04). Please upgrade to the latest
+Python version, or at least Python 3.11...`
+**Qué hace:** no afecta el funcionamiento actual — es una advertencia,
+no un error — pero Google dejara de dar soporte a `google.api_core`
+para Python 3.10 a partir de esa fecha, lo cual eventualmente
+afectaria las dependencias de Firestore (`google.cloud.firestore`).
+**Alcance del cambio:** requiere recrear el entorno Conda con Python
+3.11+ (`conda create --name extractor_pdf-env python=3.11 -y`, segun
+la regla de Anaconda del proyecto), reinstalar todas las dependencias
+de `requirements.txt`, y volver a probar el pipeline completo
+(extraccion individual, lote, Firestore, exportacion a Sheets/Excel)
+antes de dar el cambio por cerrado — no es un cambio de una sola
+linea, es una migracion de entorno completa.
+**Prioridad:** baja — no bloquea nada hoy. Vale la pena hacerlo antes
+de la fecha limite (04/10/2026) mencionada en el propio aviso, no
+como emergencia.
 
 ## Cómo usar este documento
 

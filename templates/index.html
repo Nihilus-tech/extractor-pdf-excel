@@ -103,6 +103,30 @@
         .btn-primary:hover { background: #0097A7; transform: translateY(-1px); }
         .btn-primary:disabled { background: #1a1a1a; color: #444; cursor: not-allowed; transform: none; }
 
+        /* SELECTOR DE PROVEEDOR IA (override por extraccion) */
+        .selector-proveedor {
+            margin-top: 10px;
+        }
+        .btn-proveedor-toggle {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 14px; background: #0f0f0f; border: 1px solid #1a1a1a;
+            border-radius: 10px; color: #888; font-size: 12px; cursor: pointer;
+            font-family: 'Inter', sans-serif; transition: all 0.2s; width: 100%;
+        }
+        .btn-proveedor-toggle:hover { border-color: #00BCD4; color: #fff; }
+        .proveedor-opciones {
+            display: none; gap: 8px; margin-top: 8px;
+        }
+        .proveedor-opciones.abierto { display: flex; }
+        .proveedor-opcion {
+            flex: 1; padding: 10px; text-align: center;
+            background: #0f0f0f; border: 1px solid #1a1a1a; border-radius: 10px;
+            color: #888; font-size: 12px; cursor: pointer;
+            font-family: 'Inter', sans-serif; transition: all 0.2s;
+        }
+        .proveedor-opcion:hover { border-color: #00BCD4; color: #fff; }
+        .proveedor-opcion.activo { background: #061518; border-color: #00BCD4; color: #00BCD4; font-weight: 600; }
+
         /* PROGRESO */
         .progress-box {
             display: none; background: #0f0f0f; border: 1px solid #1a1a1a;
@@ -379,9 +403,28 @@
                                 font-family:'Inter',sans-serif;">
                      Guardar
                  </button>
-             </form>
-         </div>  
-    </nav>
+                </form>
+            </div>
+   
+            <div style="background:#0f0f0f; border:1px solid #1a1a1a; border-radius:12px;
+                 padding:14px 18px; margin-bottom:20px; display:flex; align-items:center; gap:12px;">
+                 <span style="font-size:12px; color:#888; white-space:nowrap;">🤖 Proveedor de IA preferido:</span>
+                 <form method="POST" action="/perfil/proveedor-ia" style="flex:1; display:flex; gap:8px;">
+                     <select name="proveedor_ia"
+                             style="flex:1; padding:8px 12px; background:#141414; border:1px solid #1e1e1e;
+                                    border-radius:8px; color:#fff; font-size:12px; font-family:'Inter',sans-serif;">
+                         <option value="groq" {% if current_user.proveedor_ia_preferido == 'groq' %}selected{% endif %}>Groq (predeterminado)</option>
+                         <option value="gemini" {% if current_user.proveedor_ia_preferido == 'gemini' %}selected{% endif %}>Gemini</option>
+                     </select>
+                     <button type="submit"
+                             style="padding:8px 16px; background:#4CAF50; color:#080808; border:none;
+                                    border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;
+                                    font-family:'Inter',sans-serif;">
+                         Guardar
+                     </button>
+                 </form>
+             </div>
+       </nav>
 
 <section class="hero">
     <p class="hero-eyebrow">Powered by LLaMA 3.1 + pdfplumber</p>
@@ -411,6 +454,16 @@
         <button class="btn-primary" id="btnSingle" onclick="extractSingle()">
             Extraer datos con IA →
         </button>
+
+        <div class="selector-proveedor">
+            <button type="button" class="btn-proveedor-toggle" onclick="toggleSelectorProveedor()">
+                ☰ Modelo de IA
+            </button>
+            <div class="proveedor-opciones" id="proveedorOpciones">
+                <div class="proveedor-opcion" data-proveedor="groq" onclick="elegirProveedor('groq')">Groq</div>
+                <div class="proveedor-opcion" data-proveedor="gemini" onclick="elegirProveedor('gemini')">Gemini</div>
+            </div>
+        </div>
 
         <div class="progress-box" id="progressSingle">
             <p class="progress-label" id="labelSingle">Iniciando...</p>
@@ -697,12 +750,30 @@
 
 <script>
 // ── ESTADO ─────────────────────────────────────────────────────────────────────
+// Per-extraction AI provider override. null means "use the user's
+// saved default preference" — set explicitly only when the user
+// picks an option from the "☰ Modelo de IA" menu.
+let proveedorSeleccionado = null;
+
+function toggleSelectorProveedor() {
+    document.getElementById('proveedorOpciones').classList.toggle('abierto');
+}
+
+function elegirProveedor(proveedor) {
+    proveedorSeleccionado = proveedor;
+    document.querySelectorAll('.proveedor-opcion').forEach(el => {
+        el.classList.toggle('activo', el.dataset.proveedor === proveedor);
+    });
+    document.getElementById('proveedorOpciones').classList.remove('abierto');
+}
+
 let datosSingle = null;
 let datosOriginales = null;   // copia sin editar para el botón "restaurar"
 let datosBatch = null;
 let filenameSingle = null;
 let haycambios = false;
 let archivosLote = [];
+
 
 // ── TABS ───────────────────────────────────────────────────────────────────────
 function setTab(modo) {
@@ -953,6 +1024,12 @@ async function extractSingle() {
     fill.style.width = '20%'; label.textContent = 'Leyendo PDF...';
     const formData = new FormData();
     formData.append('file', file);
+    // Only sent if the user explicitly picked one from the "☰ Modelo
+    // de IA" menu for this extraction — otherwise the backend falls
+    // back to the user's saved preference.
+    if (proveedorSeleccionado) {
+        formData.append('proveedor_ia', proveedorSeleccionado);
+    }
 
     try {
         const fetchP = fetch('/extract', { method: 'POST', body: formData });

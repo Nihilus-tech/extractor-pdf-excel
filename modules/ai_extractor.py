@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import os
 import json
-import time
 from groq import Groq
+from modules.ai_provider import _llamar_groq_con_reintentos
 
 
 # ── DETECCIÓN DE TIPO POR PALABRAS CLAVE ──────────────────────────────────────
@@ -333,64 +333,6 @@ ESTRUCTURA JSON REQUERIDA:
     return prompt
 
 
-# ── FUNCIÓN PRINCIPAL ──────────────────────────────────────────────────────────
-def _llamar_groq_con_reintentos(client: Groq, prompt: str, max_intentos: int = 3):
-    """
-    Calls the Groq chat completion endpoint with exponential backoff
-    retries. Retries on network errors, 5xx server errors, and 429
-    rate limit responses; does not retry on other error types, since
-    those are unlikely to be resolved by waiting.
-
-    Args:
-        client: an initialized Groq client.
-        prompt: the full prompt text to send to the model.
-        max_intentos: maximum number of attempts before giving up.
-
-    Returns:
-        The Groq API response object on success.
-
-    Raises:
-        Exception: the last error encountered, if all attempts fail.
-    """
-    ultimo_error = None
-
-    for intento in range(1, max_intentos + 1):
-        try:
-            return client.chat.completions.create(
-                model="openai/gpt-oss-20b",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=2000,
-                temperature=0.1
-            )
-        except Exception as e:
-            ultimo_error = e
-            mensaje_error = str(e)
-
-            # Only retry on transient errors: rate limits, timeouts,
-            # and 5xx server errors. Anything else (e.g. bad request,
-            # auth failure) will not be fixed by waiting, so fail fast.
-            es_reintentable = (
-                "429" in mensaje_error
-                or "rate_limit" in mensaje_error.lower()
-                or "timeout" in mensaje_error.lower()
-                or "500" in mensaje_error
-                or "502" in mensaje_error
-                or "503" in mensaje_error
-                # Also retry on generic network-level exceptions, which
-                # may not include any of the strings above in their message
-                or isinstance(e, (ConnectionError, TimeoutError))
-            )
-
-            if not es_reintentable or intento == max_intentos:
-                raise
-
-            espera_segundos = 2 ** (intento - 1)  # 1s, 2s, 4s
-            print(f"[ai_extractor] Intento {intento}/{max_intentos} fallo: {mensaje_error}. Reintentando en {espera_segundos}s...")
-            time.sleep(espera_segundos)
-
-    raise ultimo_error
-
-
 def _clasificar_error_extraccion(excepcion: Exception, contexto: str = "ia") -> dict:
     """
     Classifies an exception into a specific, user-facing error category.
@@ -451,12 +393,19 @@ def _clasificar_error_extraccion(excepcion: Exception, contexto: str = "ia") -> 
         "mensaje": "Ocurrió un error inesperado al procesar el documento con IA. Intenta de nuevo."
     }
 
-def extraer_datos(texto_pdf):
+def extraer_datos(texto_pdf, proveedor_forzado=None):
     """
     1. Detecta el tipo de documento por palabras clave
     2. Construye un prompt especializado para ese tipo
-    3. Llama a Groq (con reintentos automaticos) y parsea el JSON de respuesta
+    3. Llama al proveedor de IA (con reintentos automaticos y fallback)
+       y parsea el JSON de respuesta
     4. Combina la confianza reportada por la IA con la validacion por reglas
+
+    Args:
+        texto_pdf: extracted text content to analyze.
+        proveedor_forzado: optional explicit provider choice ("groq"
+            or "gemini"). If None, uses the default Groq-first
+            behavior with automatic fallback.
     """
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -464,7 +413,7 @@ def extraer_datos(texto_pdf):
     prompt = construir_prompt(texto_pdf, tipo_detectado)
 
     try:
-        response = _llamar_groq_con_reintentos(client, prompt)
+        response = _llamar_groq_con_reintentos(client, prompt, proveedor_forzado=proveedor_forzado)
     except Exception as e:
         clasificacion = _clasificar_error_extraccion(e, contexto="ia")
         return {

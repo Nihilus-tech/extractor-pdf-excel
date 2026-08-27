@@ -44,7 +44,8 @@ class Usuario(UserMixin):
         password_hash: str,
         rol: str,
         creado_en: str = "",
-        sheet_url: str = ""
+        sheet_url: str = "",
+        proveedor_ia_preferido: str = "groq"
     ):
         self.id = id
         self.username = username
@@ -52,6 +53,7 @@ class Usuario(UserMixin):
         self.rol = rol
         self.creado_en = creado_en
         self.sheet_url = sheet_url
+        self.proveedor_ia_preferido = proveedor_ia_preferido
 
     def es_admin(self) -> bool:
         return self.rol == "admin"
@@ -86,7 +88,8 @@ def _usuario_from_doc(doc) -> Optional[Usuario]:
         password_hash=data.get("password_hash", ""),
         rol=data.get("rol", "usuario"),
         creado_en=data.get("creado_en", ""),
-        sheet_url=data.get("sheet_url", "")
+        sheet_url=data.get("sheet_url", ""),
+        proveedor_ia_preferido=data.get("proveedor_ia_preferido", "groq")
     )
 
 
@@ -117,7 +120,8 @@ def crear_usuario(username: str, password_hash: str, rol: str = "usuario") -> bo
             "password_hash": password_hash,
             "rol": rol,
             "creado_en": datetime.now().strftime("%d/%m/%Y %H:%M"),
-            "sheet_url": ""
+            "sheet_url": "",
+            "proveedor_ia_preferido": "groq"
         })
         return True
     except Exception as e:
@@ -152,7 +156,8 @@ def buscar_usuario_por_username(username: str) -> Optional[Usuario]:
             password_hash=data.get("password_hash", ""),
             rol=data.get("rol", "usuario"),
             creado_en=data.get("creado_en", ""),
-            sheet_url=data.get("sheet_url", "")
+            sheet_url=data.get("sheet_url", ""),
+            proveedor_ia_preferido=data.get("proveedor_ia_preferido", "groq")
         )
     except Exception as e:
         print(f"[firestore_db] Error searching user by username: {e}")
@@ -233,6 +238,21 @@ def actualizar_sheet_url(user_id: str, sheet_url: str) -> None:
     except Exception as e:
         print(f"[firestore_db] Error updating sheet_url for {user_id}: {e}")
 
+def actualizar_proveedor_preferido(user_id: str, proveedor: str) -> None:
+    """
+    Updates the user's preferred AI provider, used as the default
+    choice for future extractions unless overridden per-extraction.
+
+    Args:
+        user_id: the Firestore document id (string) of the user.
+        proveedor: "groq" or "gemini".
+    """
+    try:
+        db.collection(USUARIOS_COLLECTION).document(user_id).update({
+            "proveedor_ia_preferido": proveedor
+        })
+    except Exception as e:
+        print(f"[firestore_db] Error updating proveedor_ia_preferido for {user_id}: {e}")
 
 def inicializar_usuarios() -> None:
     """

@@ -24,7 +24,7 @@ from modules.firestore_db import (
     buscar_usuario_por_id, obtener_todos_usuarios, eliminar_usuario,
     migrar_columna_categoria, obtener_historial_completo,
     actualizar_sheet_url, migrar_columna_sheet_url,
-    obtener_historial_por_rango
+    obtener_historial_por_rango, actualizar_proveedor_preferido
 )
 
 
@@ -102,8 +102,16 @@ def extract():
         if not resultado_pdf["texto_completo"].strip():
             return jsonify({"error": "El PDF no contiene texto extraíble. Puede ser una imagen escaneada."}), 400
 
-        # Paso 2: la IA extrae los datos estructurados
-        resultado_ia = extraer_datos(resultado_pdf["texto_completo"])
+        # Paso 2: la IA extrae los datos estructurados.
+        # Priority: explicit per-extraction choice from the upload
+        # form > the user's saved default preference > extraer_datos()
+        # itself falls back to Groq-first if this ends up as None.
+        proveedor_override = request.form.get("proveedor_ia", "").strip().lower()
+        if proveedor_override not in ("groq", "gemini"):
+            proveedor_override = None
+        proveedor_a_usar = proveedor_override or getattr(current_user, "proveedor_ia_preferido", None)
+
+        resultado_ia = extraer_datos(resultado_pdf["texto_completo"], proveedor_forzado=proveedor_a_usar)
 
         if not resultado_ia["exito"]:
             return jsonify({"error": "La IA no pudo extraer datos estructurados.", "detalle": resultado_ia.get("error")}), 500
@@ -503,6 +511,22 @@ def actualizar_sheet_url_route():
     nueva_url = request.form.get("sheet_url", "").strip()
     actualizar_sheet_url(current_user.id, nueva_url)
     flash("URL de Google Sheets actualizada correctamente.")
+    return redirect(url_for("index"))
+
+@app.route("/perfil/proveedor-ia", methods=["POST"])
+@login_required
+def actualizar_proveedor_preferido_route():
+    """
+    Saves the user's default AI provider preference (groq or gemini).
+    This becomes the default used when no per-extraction override is
+    selected in the upload screen.
+    """
+    proveedor = request.form.get("proveedor_ia", "").strip().lower()
+    if proveedor not in ("groq", "gemini"):
+        flash("Proveedor de IA no valido.")
+        return redirect(url_for("index"))
+    actualizar_proveedor_preferido(current_user.id, proveedor)
+    flash(f"Proveedor de IA preferido actualizado a {proveedor.capitalize()}.")
     return redirect(url_for("index"))
 
 @app.route("/admin/eliminar-usuario/<user_id>", methods=["POST"])
