@@ -2,7 +2,7 @@
 import os
 import json
 from groq import Groq
-from modules.ai_provider import _llamar_groq_con_reintentos
+from modules.ai_provider import _llamar_groq_con_reintentos, calcular_costo_estimado_usd
 
 
 # ── DETECCIÓN DE TIPO POR PALABRAS CLAVE ──────────────────────────────────────
@@ -413,7 +413,7 @@ def extraer_datos(texto_pdf, proveedor_forzado=None):
     prompt = construir_prompt(texto_pdf, tipo_detectado)
 
     try:
-        response = _llamar_groq_con_reintentos(client, prompt, proveedor_forzado=proveedor_forzado)
+        response, proveedor_usado, modelo_usado, latencia_ms = _llamar_groq_con_reintentos(client, prompt, proveedor_forzado=proveedor_forzado)
     except Exception as e:
         clasificacion = _clasificar_error_extraccion(e, contexto="ia")
         return {
@@ -449,6 +449,18 @@ def extraer_datos(texto_pdf, proveedor_forzado=None):
                     confianza_final[campo] = "media"
 
         datos["_confianza"] = confianza_final
+
+        tokens_entrada = response.usage.prompt_tokens
+        tokens_salida = response.usage.completion_tokens
+
+        datos["_metricas_llm"] = {
+            "proveedor": proveedor_usado,
+            "modelo": modelo_usado,
+            "tokens_input": tokens_entrada,
+            "tokens_output": tokens_salida,
+            "latencia_ms": latencia_ms,
+            "costo_estimado_usd": calcular_costo_estimado_usd(modelo_usado, tokens_entrada, tokens_salida),
+        }
 
         return {"exito": True, "datos": datos}
     

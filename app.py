@@ -298,6 +298,30 @@ def download_excel_batch():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/download/excel/batch/detallado", methods=["POST"])
+@login_required
+def download_excel_batch_detallado():
+    """
+    Generates the product-level consolidated Excel (one row per item
+    line, not per invoice) — the "detallado" modality selected via
+    the modalidadBatch dropdown in the batch processing view.
+    """
+    data = request.get_json()
+    if not data or "resultados" not in data:
+        return jsonify({"error": "No se recibieron datos"}), 400
+
+    try:
+        buffer = generar_excel_batch_detallado(data["resultados"])
+        nombre = f"lote_detallado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return send_file(
+            buffer,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=nombre
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/export/sheets/batch/detallado", methods=["POST"])
 @login_required
 def export_sheets_batch_detallado():

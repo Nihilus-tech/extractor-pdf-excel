@@ -514,13 +514,13 @@
                 </table>
             </div>
             <button class="btn-add-row" onclick="agregarFila()">+ Agregar fila</button>
-   
+
             <div style="display:flex; gap:10px; margin-top:4px;">
-                <button class="btn-excel" id="btnExcelBatch" onclick="descargarExcelBatch()"
+                <button class="btn-excel" id="btnExcelSingle" onclick="descargarExcelSingle()"
                     style="flex:1;">
-                    ⬇ Excel consolidado
+                    ⬇ Excel
                 </button>
-                <button class="btn-excel" id="btnSheetsBatch" onclick="exportarSheetsBatch()"
+                <button class="btn-excel" id="btnSheetsSingle" onclick="exportarSheetsSingle()"
                     style="flex:1; border-color:#4CAF50; color:#4CAF50;"
                     onmouseover="this.style.background='#4CAF50';this.style.color='#080808'"
                     onmouseout="this.style.background='transparent';this.style.color='#4CAF50'">
@@ -529,7 +529,6 @@
             </div>
         </div>
     </div>
-
     <!-- ── MODO LOTE ──────────────────────────────────────────────────────── -->
     <div id="panelBatch" style="display:none;">
         <div class="drop-zone" id="dropZoneBatch">
